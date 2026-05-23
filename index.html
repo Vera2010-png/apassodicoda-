@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A Passo di Coda — Pet Store · Azzano Mella</title>
+<link href="https://fonts.googleapis.com/css2?family=Sansita:ital,wght@0,400;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & VARIABLES ─────────────────────────────────────── */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --arancio:   #D96C05;
+  --arancio-d: #A85204;
+  --arancio-l: #F2A35A;
+  --arancio-xs:#FEF0E3;
+  --nero:      #1A1008;
+  --marrone:   #3D2008;
+  --grigio:    #8C7B6E;
+  --beige:     #F7F1EA;
+  --bianco:    #FDFCFA;
+  --r: 217; --g: 108; --b: 5;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--beige);
+  font-family: 'Sansita', Georgia, serif;
+  color: var(--marrone);
+  min-height: 100vh;
+}
+
+/* ── HERO ──────────────────────────────────────────────────── */
+.hero {
+  background: var(--arancio);
+  padding: 48px 24px 36px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  bottom: -60px; right: -60px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+}
+.hero::after {
+  content: '';
+  position: absolute;
+  top: -40px; left: -40px;
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  background: rgba(26,16,8,0.08);
+}
+.hero-logo {
+  font-size: 42px;
+  font-weight: 800;
+  color: var(--bianco);
+  line-height: 1.0;
+  letter-spacing: -1px;
+  position: relative; z-index:1;
+  text-shadow: 0 2px 12px rgba(26,16,8,0.2);
+}
+.hero-logo span { display:block; font-size:16px; font-weight:400; letter-spacing:3px; text-transform:uppercase; opacity:.85; margin-top:4px; }
+.hero-tagline {
+  color: rgba(253,252,250,0.9);
+  font-size: 14px;
+  margin-top: 10px;
+  position: relative; z-index:1;
+  line-height: 1.5;
+}
+.hero-badges {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  position: relative; z-index:1;
+}
+.badge {
+  background: rgba(26,16,8,0.18);
+  color: var(--bianco);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: .5px;
+}
+
+/* ── CTA BUTTONS ───────────────────────────────────────────── */
+.cta-section {
+  padding: 24px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.cta-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-radius: 14px;
+  text-decoration: none;
+  font-family: 'Sansita', serif;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: .3px;
+  transition: transform .15s, box-shadow .15s;
+  box-shadow: 0 3px 14px rgba(26,16,8,0.13);
+}
+.cta-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(26,16,8,0.18); }
+.cta-btn:active { transform: translateY(0); }
+.cta-primary {
+  background: var(--arancio);
+  color: var(--bianco);
+}
+.cta-secondary {
+  background: var(--nero);
+  color: var(--bianco);
+}
+.cta-light {
+  background: var(--bianco);
+  color: var(--marrone);
+  border: 1.5px solid rgba(61,32,8,0.12);
+}
+.cta-icon { font-size: 20px; }
+
+/* ── DIVIDER ───────────────────────────────────────────────── */
+.divider {
+  text-align: center;
+  padding: 28px 20px 4px;
+  position: relative;
+}
+.divider span {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--grigio);
+  background: var(--beige);
+  padding: 0 12px;
+  position: relative; z-index:1;
+}
+.divider::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 20px; right: 20px;
+  height: 1px;
+  background: rgba(61,32,8,0.12);
+}
+
+/* ── CATEGORIES NAV ────────────────────────────────────────── */
+.cat-nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 16px 20px 4px;
+  scrollbar-width: none;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.cat-nav::-webkit-scrollbar { display:none; }
+.cat-btn {
+  flex-shrink: 0;
+  background: var(--bianco);
+  border: 1.5px solid rgba(61,32,8,0.12);
+  color: var(--marrone);
+  font-family: 'Sansita', serif;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.cat-btn:hover, .cat-btn.active {
+  background: var(--arancio);
+  border-color: var(--arancio);
+  color: white;
+}
+
+/* ── CATALOG ───────────────────────────────────────────────── */
+.catalog {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 8px 16px 40px;
+}
+
+.cat-section {
+  display: none;
+  animation: fadeIn .25s ease;
+}
+.cat-section.visible { display: block; }
+
+@keyframes fadeIn {
+  from { opacity:0; transform: translateY(8px); }
+  to   { opacity:1; transform: none; }
+}
+
+.cat-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--arancio);
+  padding: 20px 0 6px;
+  border-bottom: 2px solid var(--arancio-xs);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cat-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--grigio);
+  margin: 16px 0 8px;
+}
+
+/* Product card */
+.product-card {
+  background: var(--bianco);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  box-shadow: 0 1px 8px rgba(26,16,8,0.06);
+  transition: box-shadow .15s;
+}
+.product-card:hover { box-shadow: 0 3px 16px rgba(26,16,8,0.10); }
+.product-info { flex: 1; }
+.product-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--marrone);
+  line-height: 1.3;
+  margin-bottom: 3px;
+}
+.product-brand {
+  font-size: 11px;
+  color: var(--arancio-d);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  margin-bottom: 4px;
+}
+.product-desc {
+  font-size: 11.5px;
+  color: var(--grigio);
+  line-height: 1.4;
+  font-style: italic;
+}
+.product-prices {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.price-tag {
+  background: var(--arancio-xs);
+  color: var(--arancio-d);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.price-tag.main {
+  background: var(--arancio);
+  color: white;
+  font-size: 13px;
+}
+
+/* ── INFO SECTION ──────────────────────────────────────────── */
+.info-section {
+  max-width: 480px;
+  margin: 0 auto 0;
+  padding: 0 16px 16px;
+}
+.info-card {
+  background: var(--bianco);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 8px rgba(26,16,8,0.06);
+}
+.info-card h3 {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--arancio);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--marrone);
+  line-height: 1.45;
+}
+.info-row .icon { flex-shrink:0; font-size:16px; }
+
+/* ── FOOTER ────────────────────────────────────────────────── */
+.footer {
+  background: var(--nero);
+  color: rgba(253,252,250,0.55);
+  text-align: center;
+  padding: 20px;
+  font-size: 11px;
+  letter-spacing: .5px;
+}
+.footer strong { color: rgba(253,252,250,0.85); }
+
+/* ── STICKY WHATSAPP ───────────────────────────────────────── */
+.wa-float {
+  position: fixed;
+  bottom: 24px;
+  right: 20px;
+  background: #25D366;
+  color: white;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow: 0 4px 20px rgba(37,211,102,0.4);
+  text-decoration: none;
+  z-index: 100;
+  transition: transform .2s;
+}
+.wa-float:hover { transform: scale(1.08); }
+
+/* ── BARF BANNER ───────────────────────────────────────────── */
+.barf-banner {
+  background: var(--nero);
+  color: var(--bianco);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  margin: 0 auto 0;
+  border-radius: 14px;
+  margin: 16px 16px 0;
+}
+.barf-banner .barf-icon { font-size: 28px; flex-shrink:0; }
+.barf-banner h4 { font-size: 14px; font-weight:800; color: var(--arancio-l); margin-bottom:2px; }
+.barf-banner p { font-size: 12px; color: rgba(253,252,250,0.65); line-height:1.4; }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-logo">A passo di coda <span>Pet Store · Azzano Mella</span></div>
+  <p class="hero-tagline">Alimentazione di qualità selezionata da Daniele,<br>educatore cinofilo — con Wendy 🐾</p>
+  <div class="hero-badges">
+    <span class="badge">Brand non GDO</span>
+    <span class="badge">Consulenza gratuita</span>
+    <span class="badge">Consegna a casa</span>
+  </div>
+</div>
+
+<!-- CTA BUTTONS -->
+<div class="cta-section">
+  <a href="https://wa.me/393935679456" class="cta-btn cta-primary">
+    <span class="cta-icon">💬</span> Scrivici su WhatsApp
+  </a>
+  <a href="https://maps.google.com/?q=Via+Giovanni+Paolo+II+45B+Azzano+Mella+Brescia" class="cta-btn cta-secondary" target="_blank">
+    <span class="cta-icon">📍</span> Via G. Paolo II 45/B · Azzano Mella
+  </a>
+  <a href="https://www.instagram.com/apassodicoda" class="cta-btn cta-light" target="_blank">
+    <span class="cta-icon">📸</span> Seguici su Instagram
+  </a>
+</div>
+
+<!-- BARF BANNER -->
+<div class="barf-banner">
+  <div class="barf-icon">❄️</div>
+  <div>
+    <h4>🆕 Da settembre: BARF disponibile!</h4>
+    <p>Italia Pet Food · Natura Selvaggia · Consulenza alimentare professionale</p>
+  </div>
+</div>
+
+<!-- DIVIDER -->
+<div class="divider"><span>Il nostro catalogo</span></div>
+
+<!-- CATEGORY NAV -->
+<div class="cat-nav" id="catNav">
+  <button class="cat-btn active" onclick="showCat('cane-crocchette', this)">🐕 Crocchette Cane</button>
+  <button class="cat-btn" onclick="showCat('cane-umido', this)">🥫 Umido Cane</button>
+  <button class="cat-btn" onclick="showCat('masticativi', this)">🦴 Masticativi</button>
+  <button class="cat-btn" onclick="showCat('snack-cane', this)">🍖 Snack Cane</button>
+  <button class="cat-btn" onclick="showCat('accessori-cane', this)">🎾 Accessori Cane</button>
+  <button class="cat-btn" onclick="showCat('petcare', this)">🛁 Pet Care</button>
+  <button class="cat-btn" onclick="showCat('gatto-crocchette', this)">🐱 Crocchette Gatto</button>
+  <button class="cat-btn" onclick="showCat('gatto-umido', this)">🥣 Umido Gatto</button>
+  <button class="cat-btn" onclick="showCat('snack-gatto', this)">🐟 Snack Gatto</button>
+  <button class="cat-btn" onclick="showCat('accessori-gatto', this)">🏠 Accessori Gatto</button>
+</div>
+
+<!-- CATALOG -->
+<div class="catalog">
+
+  <!-- CROCCHETTE CANE -->
+  <div id="cane-crocchette" class="cat-section visible">
+    <div class="cat-title">🐕 Crocchette Cane</div>
+
+    <div class="cat-subtitle">Con cereali</div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Barkin</div>
+        <div class="product-name">Barkin al Manzo</div>
+        <div class="product-desc">Carne disidratata 32%, riso, frumento integrale · condroitina, prebiotici, erbe</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">15kg · 59,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Barkin</div>
+        <div class="product-name">Barkin all'Agnello</div>
+        <div class="product-desc">Carne disidratata 32%, riso, frumento integrale · condroitina, prebiotici, erbe</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">15kg · 59,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Barkin</div>
+        <div class="product-name">Barkin al Pesce</div>
+        <div class="product-desc">Polpa di pesce disidratata 32%, riso, olio di pesce e salmone · omega-3</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">15kg · 64,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Vivere</div>
+        <div class="product-name">Vivere all'Anatra</div>
+        <div class="product-desc">Proteine di anatra 26% + anatra fresca 20%, riso integrale · alghe marine, FOS, MOS</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 21,90€</span>
+        <span class="price-tag">12kg · 59,30€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Vivere</div>
+        <div class="product-name">Vivere al Bufalo</div>
+        <div class="product-desc">Proteine di anatra 26% + anatra fresca 20%, riso integrale · alghe marine, FOS, MOS</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 22,90€</span>
+        <span class="price-tag">12kg · 60,50€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Vivere</div>
+        <div class="product-name">Vivere al Salmone</div>
+        <div class="product-desc">Proteine di salmone 26% + salmone fresco 20%, riso integrale · omega-3, alghe, FOS</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 21,90€</span>
+        <span class="price-tag">12kg · 59,30€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Harper & Bone</div>
+        <div class="product-name">Wild Mountain</div>
+        <div class="product-desc">Maiale iberico 16%, cervo, salmone, coniglio, cinghiale · glucosamina, condroitina, verdure fresche</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">2kg · 14,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Harper & Bone</div>
+        <div class="product-name">Wild Mountain Mini</div>
+        <div class="product-desc">Per razze piccole · stessa formula Wild Mountain</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">2kg · 14,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Harper & Bone</div>
+        <div class="product-name">Ocean Wonders</div>
+        <div class="product-desc">Salmone fresco 14,6%, tonno 12,3%, riso integrale · omega-3, verdure fresche, MOS, FOS</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">2kg · 14,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Harper & Bone</div>
+        <div class="product-name">Ocean Wonders Mini</div>
+        <div class="product-desc">Per razze piccole · stessa formula Ocean Wonders</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">2kg · 14,50€</span></div>
+    </div>
+
+    <div class="cat-subtitle">Grain Free</div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery al Maiale Iberico</div>
+        <div class="product-desc">Mono-proteina · tapioca, piselli · glucosamina, condroitina · ideale per sensibilità alimentari</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">4kg · 26,95€</span>
+        <span class="price-tag">12kg · 64,90€</span>
+      </div>
+    </div>
+
+<div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery al Maiale Iberico mini</div>
+        <div class="product-desc">Mono-proteina · tapioca, piselli · glucosamina, condroitina · ideale per sensibilità alimentari</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag">2kg mini · 16,85€</span>
+        <span class="price-tag">7kg mini · 47,95€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery all'Agnello</div>
+        <div class="product-desc">Mono-proteina agnello · omega-3, omega-6, glucosamina, condroitina, oli essenziali</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">4kg · 26,95€</span>
+        <span class="price-tag">12kg · 64,90€</span>
+      </div>
+    </div>
+
+<div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery all'Agnello mini</div>
+        <div class="product-desc">Mono-proteina agnello · omega-3, omega-6, glucosamina, condroitina, oli essenziali</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag">2kg mini · 16,85€</span>
+        <span class="price-tag">7kg mini · 47,95€</span>
+      </div>
+    </div>
+
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery all'Aringa</div>
+        <div class="product-desc">Mono-proteina pesce · tapioca, piselli · olio di pesce · per cani con intolleranze</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">4kg · 29,75€</span>
+        <span class="price-tag">12kg · 69,50€</span>
+      </div>
+    </div>
+
+<div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery all'Aringa mini</div>
+        <div class="product-desc">Mono-proteina pesce · tapioca, piselli · olio di pesce · per cani con intolleranze</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag">2kg mini · 17,85€</span>
+        <span class="price-tag">7kg mini · 49,95€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery al Salmone</div>
+        <div class="product-desc">Mono-proteina salmone · omega-3 EPA e DHA · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">4kg · 28,95€</span>
+        <span class="price-tag">12kg · 68,50€</span>
+      </div>
+    </div>
+
+<div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Bravery</div>
+        <div class="product-name">Bravery al Salmone mini</div>
+        <div class="product-desc">Mono-proteina salmone · omega-3 EPA e DHA · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag">2kg mini · 17,95€</span>
+        <span class="price-tag">7kg mini · 49,95€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull</div>
+        <div class="product-name">Wildfull al Cervo</div>
+        <div class="product-desc">Cervo disidratato 35%, patate dolci · beta glucani, glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 14,50€</span>
+        <span class="price-tag">12kg · 72,10€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull</div>
+        <div class="product-name">Wildfull al Fagiano</div>
+        <div class="product-desc">Fagiano disidratato 29%, patate dolci · beta glucani</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 14,50€</span>
+        <span class="price-tag">12kg · 72,10€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull</div>
+        <div class="product-name">Wildfull al Cinghiale</div>
+        <div class="product-desc">Cinghiale disidratato 29%, patate dolci · estratto di cartilagine</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 14,50€</span>
+        <span class="price-tag">12kg · 72,10€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull</div>
+        <div class="product-name">Wildfull al Coniglio</div>
+        <div class="product-desc">Coniglio disidratato 29%, patate dolci · beta glucani</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 14,50€</span>
+        <span class="price-tag">12kg · 72,10€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull</div>
+        <div class="product-name">Wildfull al Salmone</div>
+        <div class="product-desc">Salmone disidratato 30%, olio di salmone 14%, sardine · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 14,50€</span>
+        <span class="price-tag">12kg · 72,10€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull Jr</div>
+        <div class="product-name">Wildfull Jr all'Agnello</div>
+        <div class="product-desc">Per cuccioli · agnello 34%, patate dolci · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 15,50€</span>
+        <span class="price-tag">12kg · 79,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Wildfull Jr</div>
+        <div class="product-name">Wildfull Jr al Tacchino</div>
+        <div class="product-desc">Per cuccioli · tacchino disidratato 35%, patate dolci · beta glucani</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 14,90€</span>
+        <span class="price-tag">12kg · 76,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog</div>
+        <div class="product-name">Welldog al Maiale</div>
+        <div class="product-desc">Maiale 50% fresco e disidratato, patate dolci · FOS, MOS, omega-3</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 20,90€</span>
+        <span class="price-tag">6kg · 42,90€</span>
+        <span class="price-tag">12kg · 73,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog</div>
+        <div class="product-name">Welldog all'Anatra</div>
+        <div class="product-desc">Anatra 50% fresco e disidratato, patate dolci · FOS, MOS, arance, mirtilli</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 21,90€</span>
+        <span class="price-tag">6kg · 41,90€</span>
+        <span class="price-tag">12kg · 76,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog</div>
+        <div class="product-name">Welldog all'Agnello</div>
+        <div class="product-desc">Agnello 50% fresco e disidratato, patate dolci · FOS, MOS, menta</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 21,90€</span>
+        <span class="price-tag">6kg · 46,30€</span>
+        <span class="price-tag">12kg · 79,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog</div>
+        <div class="product-name">Welldog Trota e Salmone</div>
+        <div class="product-desc">Salmone e trota 50%, patate dolci · asparagi, FOS, MOS, omega-3</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 20,90€</span>
+        <span class="price-tag">6kg · 41,90€</span>
+        <span class="price-tag">12kg · 71,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog</div>
+        <div class="product-name">Welldog al Manzo Angus</div>
+        <div class="product-desc">Manzo 50% fresco e disidratato, patate dolci · FOS, MOS, carote</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 21,50€</span>
+        <span class="price-tag">6kg · 44,90€</span>
+        <span class="price-tag">12kg · 77,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog Mini</div>
+        <div class="product-name">Welldog Mini all'Agnello</div>
+        <div class="product-desc">Per razze piccole · agnello 50%, patate dolci, menta · FOS, MOS</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 22,50€</span>
+        <span class="price-tag">6kg · 48,80€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog Mini</div>
+        <div class="product-name">Welldog Mini all'Anatra</div>
+        <div class="product-desc">Per razze piccole · anatra 52%, patate dolci · FOS, MOS, arance, mirtilli</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 22,50€</span>
+        <span class="price-tag">6kg · 48,80€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog Mini</div>
+        <div class="product-name">Welldog Mini Anatra e Salmone</div>
+        <div class="product-desc">Per razze piccole · salmone e trota 50%, patate dolci · omega-3, FOS, MOS</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 22,50€</span>
+        <span class="price-tag">12kg · 48,80€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Welldog Jr</div>
+        <div class="product-name">Welldog Jr Pollo e Salmone</div>
+        <div class="product-desc">Per cuccioli · salmone 60%, patate dolci · glucosamina, condroitina, nucleotidi</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 23,90€</span>
+        <span class="price-tag">6kg · 51,90€</span>
+        <span class="price-tag">12kg · 80,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Primordial</div>
+        <div class="product-name">Primordial Cervo e Tacchino</div>
+        <div class="product-desc">Tacchino fresco 35% + cervo 14%, piselli, patate dolci · alghe, FOS, MOS, glucosamina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 19,90€</span>
+        <span class="price-tag">12kg · 66,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Primordial</div>
+        <div class="product-name">Primordial Agnello e Cinghiale</div>
+        <div class="product-desc">Agnello fresco 35% + cinghiale 18%, piselli, patate dolci · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 20,90€</span>
+        <span class="price-tag">12kg · 67,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Primordial</div>
+        <div class="product-name">Primordial Bufalo e Sgombro</div>
+        <div class="product-desc">Sgombro fresco 35% + bufalo 18%, piselli, patate dolci · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 19,90€</span>
+        <span class="price-tag">12kg · 66,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Primordial</div>
+        <div class="product-name">Primordial Anatra e Trota</div>
+        <div class="product-desc">Trota fresca 35% + anatra 25%, piselli, patate dolci · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">2kg · 19,50€</span>
+        <span class="price-tag">12kg · 64,90€</span>
+      </div>
+    </div>
+
+    <div class="cat-subtitle">Pressate a freddo</div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo</div>
+        <div class="product-name">Kudo Tacchino e Anatra</div>
+        <div class="product-desc">Carne disidratata 32%, patate dolci · avena, glucosamina, condroitina, erbe</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 19,10€</span>
+        <span class="price-tag">12kg · 63,70€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo</div>
+        <div class="product-name">Kudo Mini Tacchino e Anatra</div>
+        <div class="product-desc">Per razze piccole · pressato a freddo</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">3kg · 19,50€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo</div>
+        <div class="product-name">Kudo Agnello</div>
+        <div class="product-desc">Agnello disidratato 30%, patate dolci, riso · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 21,40€</span>
+        <span class="price-tag">12kg · 71,20€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo</div>
+        <div class="product-name">Kudo Mini Agnello</div>
+        <div class="product-desc">Per razze piccole · agnello disidratato 32%</div>
+      </div>
+      <div class="product-prices"><span class="price-tag main">3kg · 21,80€</span></div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo</div>
+        <div class="product-name">Kudo Carni Rosse</div>
+        <div class="product-desc">Manzo disidratato 31%, patate dolci · avena, glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 21,40€</span>
+        <span class="price-tag">12kg · 71,20€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo</div>
+        <div class="product-name">Kudo Pesce dell'Adriatico</div>
+        <div class="product-desc">Polpa di pesce adriatico 31%, patate dolci · avena, glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 21,40€</span>
+        <span class="price-tag">12kg · 71,20€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo Jr</div>
+        <div class="product-name">Kudo Jr Tacchino e Anatra</div>
+        <div class="product-desc">Per cuccioli · carne disidratata 34%, patate dolci · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 20,50€</span>
+        <span class="price-tag">12kg · 69,90€</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div class="product-info">
+        <div class="product-brand">Kudo Jr</div>
+        <div class="product-name">Kudo Jr Agnello</div>
+        <div class="product-desc">Per cuccioli · agnello disidratato 34%, patate dolci, riso · glucosamina, condroitina</div>
+      </div>
+      <div class="product-prices">
+        <span class="price-tag main">3kg · 22,80€</span>
+        <span class="price-tag">12kg · 75,70€</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- UMIDO CANE -->
+  <div id="cane-umido" class="cat-section">
+    <div class="cat-title">🥫 Umido Cane</div>
+
+    <div class="cat-subtitle">Pura Natura — Patè (min. 92% carne)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Anatra e Pere</div><div class="product-desc">92% anatra · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Bufalo e Lamponi</div><div class="product-desc">92% bufalo · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Cervo e Ribes</div><div class="product-desc">92% cervo · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Cinghiale e Mirtillo</div><div class="product-desc">92% cinghiale · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Quaglia e Pere</div><div class="product-desc">92% quaglia · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Manzo e Ribes</div><div class="product-desc">92% manzo · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Trota e Lamponi</div><div class="product-desc">92% trota · olio salmone, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Patè Salmone e Ribes</div><div class="product-desc">92% salmone · olio extravergine oliva, erbe officinali, miele</div></div><div class="product-prices"><span class="price-tag main">150g · 1,90€</span><span class="price-tag">400g · 3,20€</span></div></div>
+
+    <div class="cat-subtitle">Disugual — Patè (96% carne, ricette pure)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Anatra</div><div class="product-desc">96% anatra pura</div></div><div class="product-prices"><span class="price-tag main">150g · 1,29€</span><span class="price-tag">400g · 2,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Anatra e Kiwi</div><div class="product-desc">92% anatra, 4% kiwi</div></div><div class="product-prices"><span class="price-tag main">150g · 1,29€</span><span class="price-tag">400g · 2,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Bufalo</div><div class="product-desc">96% bufalo (carne, polmone, fegato)</div></div><div class="product-prices"><span class="price-tag main">150g · 1,49€</span><span class="price-tag">400g · 2,89€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Cinghiale</div><div class="product-desc">96% cinghiale (carne, fegato)</div></div><div class="product-prices"><span class="price-tag main">150g · 1,49€</span><span class="price-tag">400g · 2,89€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Coniglio e Zucchine</div><div class="product-desc">92% coniglio, 4% zucchine</div></div><div class="product-prices"><span class="price-tag main">150g · 1,49€</span><span class="price-tag">400g · 2,89€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Manzo e Melone</div><div class="product-desc">92% manzo, 4% melone</div></div><div class="product-prices"><span class="price-tag main">150g · 1,29€</span><span class="price-tag">400g · 2,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Maiale e Piselli</div><div class="product-desc">92% maiale, 4% piselli</div></div><div class="product-prices"><span class="price-tag main">150g · 1,29€</span><span class="price-tag">400g · 2,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Salmone e Mirtilli</div><div class="product-desc">92% salmone, 4% mirtilli</div></div><div class="product-prices"><span class="price-tag main">150g · 1,29€</span><span class="price-tag">400g · 2,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Patè Tacchino e Patate</div><div class="product-desc">92% tacchino, 4% patate</div></div><div class="product-prices"><span class="price-tag main">150g · 1,29€</span><span class="price-tag">400g · 2,49€</span></div></div>
+
+    <div class="cat-subtitle">Terra Canis — Classic (con cereali)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Tacchino</div><div class="product-desc">46% tacchino (cuore, stomaco, fegato, muscolo) · carota, patata, pera, miglio</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Agnello</div><div class="product-desc">38% agnello (cuore, polmone) · carota, zucchina, miglio, mela, sedano</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Cavallo</div><div class="product-desc">42% cavallo · carota, sedano, amaranto, finocchio, mela, pesca</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Manzo</div><div class="product-desc">46% manzo (cuore, fegato, polmone, muscolo) · carota, zucchina, mela, riso</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Coniglio</div><div class="product-desc">43% coniglio e tacchino · zucca, pomodoro, zucchina, miglio, amaranto</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Cinghiale</div><div class="product-desc">47% cinghiale · zucchina, riso, finocchio, lampone, melone, pomodoro</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Anatra</div><div class="product-desc">42% anatra (cuore, fegato) · finocchio, pera, pesca, cetriolo, barbabietola, riso</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Classic</div><div class="product-name">Salmone</div><div class="product-desc">41% salmone · zucchina, zucca, patata, pesca, miglio</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura Classic</div><div class="product-name">Selvaggina</div><div class="product-desc">37% selvaggina · patata, carota, zucchina, yogurt, amaranto</div></div><div class="product-prices"><span class="price-tag main">400g · 4,10€</span></div></div>
+
+    <div class="cat-subtitle">Terra Canis — Grain Free</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Anatra</div><div class="product-desc">46% anatra (cuore, fegato) · zucca, carota, zucchina, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Coniglio</div><div class="product-desc">45% coniglio e tacchino · carota, zucca, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Manzo</div><div class="product-desc">47% manzo · zucca, zucchina, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Agnello</div><div class="product-desc">42% agnello · carota, zucca, mela, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Selvaggina</div><div class="product-desc">41% selvaggina · carota, patata, zucchina, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Tacchino</div><div class="product-desc">51% tacchino (cuore, stomaco, muscolo) · carota, sedano, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Cavallo</div><div class="product-desc">46% cavallo · patata, zucca, rutabaga, finocchio, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis GF</div><div class="product-name">Cinghiale</div><div class="product-desc">46% cinghiale · carota, sedano, kiwi, pesca, senza cereali</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+
+    <div class="cat-subtitle">Terra Canis Junior & Senior</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Jr</div><div class="product-name">Manzo Junior</div><div class="product-desc">Per cuccioli · 47% manzo · zucchina, carota, miglio, mela</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Jr</div><div class="product-name">Antilope Junior</div><div class="product-desc">Per cuccioli · 41% antilope · carota, zucchina, patata, pera</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Senior</div><div class="product-name">Tacchino Senior</div><div class="product-desc">Per anziani · 49% tacchino · glucosamina, equiseto, biancospino</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Terra Canis Senior</div><div class="product-name">Selvaggina Senior</div><div class="product-desc">Per anziani · 44% selvaggina · glucosamina, equiseto, tarassaco</div></div><div class="product-prices"><span class="price-tag main">400g · 4,40€</span></div></div>
+
+    <div class="cat-subtitle">Belcando — Topping (da aggiungere alle crocchette)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Belcando</div><div class="product-name">Topping al Tacchino</div><div class="product-desc">50% carne e cuore di tacchino + brodo</div></div><div class="product-prices"><span class="price-tag main">100g · 2,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Belcando</div><div class="product-name">Topping all'Anatra</div><div class="product-desc">50% carne e cuore di anatra + patata dolce</div></div><div class="product-prices"><span class="price-tag main">100g · 2,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Belcando</div><div class="product-name">Topping all'Agnello</div><div class="product-desc">50% carne e cuore di agnello + piselli</div></div><div class="product-prices"><span class="price-tag main">100g · 2,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Belcando</div><div class="product-name">Topping al Manzo</div><div class="product-desc">50% carne e cuore di manzo + carote</div></div><div class="product-prices"><span class="price-tag main">100g · 2,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Belcando</div><div class="product-name">Topping al Salmone</div><div class="product-desc">50% salmone + brodo + broccoli</div></div><div class="product-prices"><span class="price-tag main">100g · 2,20€</span></div></div>
+  </div>
+
+  <!-- MASTICATIVI -->
+  <div id="masticativi" class="cat-section">
+    <div class="cat-title">🦴 Masticativi per Cane</div>
+
+    <div class="cat-subtitle">Morbidi — per cuccioli, anziani e principianti</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Ciambella di Collagene al Manzo</div><div class="product-desc">Alternativa premium alla pelle bovina · aiuta igiene denti e gengive · molto friabile</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Ciambella di Collagene al Bacon</div><div class="product-desc">Alternativa premium alla pelle bovina · molto friabile</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Ciambella di Collagene al Salmone</div><div class="product-desc">Alternativa premium alla pelle bovina · molto friabile</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Ciambella di Collagene Burro d'Arachidi</div><div class="product-desc">Alternativa premium alla pelle bovina · molto friabile</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Trippa di Manzo</div><div class="product-desc">100% trippa · friabile, ideale per primi masticativi</div></div><div class="product-prices"><span class="price-tag main">100g · 3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Polmone di Manzo</div><div class="product-desc">100% polmone · friabile, leggero, alta digeribilità · ideale per anziani</div></div><div class="product-prices"><span class="price-tag main">250g · 8,00€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Orecchie di Coniglio con Pelo</div><div class="product-desc">100% coniglio · molto friabile · pelo come fibra naturale per intestino</div></div><div class="product-prices"><span class="price-tag main">250g · 8,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Passera di Mare</div><div class="product-desc">100% passera · alta friabilità · per cani con intolleranze</div></div><div class="product-prices"><span class="price-tag main">250g · 9,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Spratti Essiccati</div><div class="product-desc">100% spratti · per cani con intolleranze · ottimo snack giornaliero</div></div><div class="product-prices"><span class="price-tag main">100g · 6,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Colli d'Anatra</div><div class="product-desc">100% anatra · morbido, ideale per cani piccoli o con problemi dentali</div></div><div class="product-prices"><span class="price-tag main">Chiedi in negozio</span></div></div>
+
+    <div class="cat-subtitle">Durezza media — per adulti con esperienza</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Trachea di Manzo</div><div class="product-desc">100% trachea · durezza media, buon passaggio verso masticativi più duri · condroitina naturale</div></div><div class="product-prices"><span class="price-tag main">250g · 7,00€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Orecchie di Maiale</div><div class="product-desc">100% maiale · durezza media · buon passaggio verso masticativi duri</div></div><div class="product-prices"><span class="price-tag main">5pz · 9,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Fegato di Manzo</div><div class="product-desc">100% fegato · duro ma friabile · per cani con buona esperienza</div></div><div class="product-prices"><span class="price-tag main">250g · 8,50€</span></div></div>
+
+    <div class="cat-subtitle">Duri — per masticatori esperti</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Pelle di Manzo</div><div class="product-desc">100% pelle · molto duro e durevole · per masticatori esperti</div></div><div class="product-prices"><span class="price-tag main">250g · 8,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Pelle di Manzo con Pelo</div><div class="product-desc">100% pelle · molto duro · pelo aiuta a pulire l'intestino</div></div><div class="product-prices"><span class="price-tag main">250g · 8,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Orecchie di Manzo con Pelo</div><div class="product-desc">100% orecchio di manzo · molto duro · pelo per intestino</div></div><div class="product-prices"><span class="price-tag main">5pz · 10,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Pelle di Bufalo Intrecciata</div><div class="product-desc">100% bufalo · duro e durevole · formato ideale anche per taglia medio-piccola</div></div><div class="product-prices"><span class="price-tag main">250g · 7,90€</span></div></div>
+
+    <div class="cat-subtitle">Naturali — senza calorie / ecosostenibili</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Legno di Ulivo</div><div class="product-desc">Naturale ed ecosostenibile · vitamine, betacarotene, antiossidanti · zero calorie</div></div><div class="product-prices"><span class="price-tag main">9,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Radice di Erika</div><div class="product-desc">Foresta mediterranea · zero calorie · ideale per cani in sovrappeso che amano masticare</div></div><div class="product-prices"><span class="price-tag main">Chiedi in negozio</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Corna di Daino</div><div class="product-desc">Muta stagionale · ipoallergenico, senza glutine · alto calcio e fosforo</div></div><div class="product-prices"><span class="price-tag main">14,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Latte di Yak</div><div class="product-desc">Himalaya · latte yak essiccato, sale himalayano · alta digeribilità, zero odore</div></div><div class="product-prices"><span class="price-tag main">Chiedi in negozio</span></div></div>
+  </div>
+
+  <!-- SNACK CANE -->
+  <div id="snack-cane" class="cat-section">
+    <div class="cat-title">🍖 Snack per Cane</div>
+
+    <div class="cat-subtitle">Yogupet — Gelati e Yogurt (senza lattosio)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Yogupet</div><div class="product-name">Yogurt ai Semi di Chià</div><div class="product-desc">Latte senza lattosio, panna, semi di chia</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Yogupet</div><div class="product-name">Yogurt all'Olio di Oliva</div><div class="product-desc">Latte senza lattosio, panna, olio d'oliva</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Yogupet</div><div class="product-name">Yogurt al Miele</div><div class="product-desc">Latte senza lattosio, panna, miele</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Yogupet</div><div class="product-name">Gelato Cocco, Ananas e Banana</div><div class="product-desc">Yogurt pastorizzato, cocco, ananas, banana</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Yogupet</div><div class="product-name">Gelato Anguria, Lamponi e More</div><div class="product-desc">Latte pastorizzato, panna, anguria, lamponi, more</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Yogupet</div><div class="product-name">Gelato Mela, Pere e Kiwi</div><div class="product-desc">Latte, panna, mela, pera, kiwi, spirulina</div></div><div class="product-prices"><span class="price-tag main">3,99€</span></div></div>
+
+    <div class="cat-subtitle">Fidovet — Yogurt e Gelati</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Yogurt alla Carota</div></div><div class="product-prices"><span class="price-tag main">2,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Yogurt alla Mela</div></div><div class="product-prices"><span class="price-tag main">2,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Yogurt al Lampone</div></div><div class="product-prices"><span class="price-tag main">2,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Yogurt alla Vaniglia</div></div><div class="product-prices"><span class="price-tag main">2,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Yogurt alla Banana</div></div><div class="product-prices"><span class="price-tag main">2,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Yogurt alla Fragola</div></div><div class="product-prices"><span class="price-tag main">2,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Gelato alla Mela</div></div><div class="product-prices"><span class="price-tag main">3,29€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Gelato al Lampone</div></div><div class="product-prices"><span class="price-tag main">3,29€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Gelato alla Vaniglia</div></div><div class="product-prices"><span class="price-tag main">3,29€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Gelato alla Banana</div></div><div class="product-prices"><span class="price-tag main">3,29€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Gelato all'Ananas</div></div><div class="product-prices"><span class="price-tag main">3,29€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Fidovet</div><div class="product-name">Gelato alla Fragola</div></div><div class="product-prices"><span class="price-tag main">3,29€</span></div></div>
+
+    <div class="cat-subtitle">Sanadog — Strisce e Cubetti Essiccati</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Strisce di Cervo</div><div class="product-desc">100% cervo</div></div><div class="product-prices"><span class="price-tag main">100g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Strisce di Anatra</div><div class="product-desc">100% anatra disidratata</div></div><div class="product-prices"><span class="price-tag main">70g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Strisce di Salmone</div><div class="product-desc">100% salmone</div></div><div class="product-prices"><span class="price-tag main">70g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Cubetti di Cervo</div><div class="product-desc">95% cervo, 5% vegetali</div></div><div class="product-prices"><span class="price-tag main">70g · 4,99€</span></div></div>
+
+    <div class="cat-subtitle">Farm Company — Salsicce Gourmet</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Farm Company</div><div class="product-name">Salsicce al Manzo</div><div class="product-desc">90% carne (30% manzo) · naturale, senza conservanti</div></div><div class="product-prices"><span class="price-tag main">0,50€ cad.</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Farm Company</div><div class="product-name">Salsicce al Prosciutto</div><div class="product-desc">90% carne (60% suino, 20% prosciutto)</div></div><div class="product-prices"><span class="price-tag main">0,50€ cad.</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Farm Company</div><div class="product-name">Salsicce all'Anatra</div><div class="product-desc">90% carne (20% anatra)</div></div><div class="product-prices"><span class="price-tag main">0,50€ cad.</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Farm Company</div><div class="product-name">Salsicce al Salmone</div><div class="product-desc">50% salmone fresco</div></div><div class="product-prices"><span class="price-tag main">0,50€ cad.</span></div></div>
+
+    <div class="cat-subtitle">Sanadog — Hamburger Naturali</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Hamburger Anatra con Alghe</div><div class="product-desc">90% anatra, albicocca, alghe</div></div><div class="product-prices"><span class="price-tag main">100g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Hamburger Coniglio, Mela e Cavolo</div><div class="product-desc">90% coniglio, mela, cavolo riccio</div></div><div class="product-prices"><span class="price-tag main">100g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Hamburger Tacchino e Patate Dolci</div><div class="product-desc">90% tacchino, patate dolci, melograno</div></div><div class="product-prices"><span class="price-tag main">100g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Sanadog</div><div class="product-name">Biscotti di Merluzzo Atlantico</div><div class="product-desc">100% merluzzo dell'Atlantico</div></div><div class="product-prices"><span class="price-tag main">100g · 5,49€</span></div></div>
+
+    <div class="cat-subtitle">Harper & Bone — Stick Funzionali</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Jumping Legs (articolazioni)</div><div class="product-desc">Prosciutto serrano 43%, tacchino, salmone · glucosamina 0,50%</div></div><div class="product-prices"><span class="price-tag main">75g · 2,70€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Glow Beauty (pelo e pelle)</div><div class="product-desc">Prosciutto 45%, salmone e tonno · estratto di aloe vera</div></div><div class="product-prices"><span class="price-tag main">75g · 2,70€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Chill & Relax (antiistress)</div><div class="product-desc">Prosciutto 45%, tacchino · passiflora, camomilla</div></div><div class="product-prices"><span class="price-tag main">75g · 2,70€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Premietti Semi-umidi al Manzo</div><div class="product-desc">Prosciutto serrano 46%, manzo 28%, riso</div></div><div class="product-prices"><span class="price-tag main">90g · 2,30€</span></div></div>
+
+    <div class="cat-subtitle">Biscotti biologici — Maria la Pasticcera</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Maria la Pasticcera</div><div class="product-name">Biscotti al Cocco</div><div class="product-desc">Biologici · farina di grano tipo "0"</div></div><div class="product-prices"><span class="price-tag main">210g · 3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Maria la Pasticcera</div><div class="product-name">Biscotti al Mirtillo</div><div class="product-desc">Biologici · con purea di mirtilli</div></div><div class="product-prices"><span class="price-tag main">210g · 3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Maria la Pasticcera</div><div class="product-name">Biscotti alla Pesca</div><div class="product-desc">Biologici · aroma naturale di pesca</div></div><div class="product-prices"><span class="price-tag main">210g · 3,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Maria la Pasticcera</div><div class="product-name">Biscotti Carota e Zucca</div><div class="product-desc">Biologici · carota in polvere, semi di zucca</div></div><div class="product-prices"><span class="price-tag main">210g · 3,99€</span></div></div>
+
+    <div class="cat-subtitle">Biscotti Mast — alla Frutta</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Biscotti Mast</div><div class="product-name">Alla Pesca</div></div><div class="product-prices"><span class="price-tag main">400g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Biscotti Mast</div><div class="product-name">Al Mango</div></div><div class="product-prices"><span class="price-tag main">400g · 4,99€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Biscotti Mast</div><div class="product-name">Alla Mela</div></div><div class="product-prices"><span class="price-tag main">400g · 4,99€</span></div></div>
+
+    <div class="cat-subtitle">Pura Natura — Verdurelle, Dental Stick e Snack Funzionali</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Carotinelle</div><div class="product-desc">Suino italiano + carote fresche 12% · erbe officinali</div></div><div class="product-prices"><span class="price-tag main">150g · 3,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Zuccherelle</div><div class="product-desc">Suino italiano + zucca fresca 12% · erbe officinali</div></div><div class="product-prices"><span class="price-tag main">150g · 3,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Erbemelle Mentoline per Alito</div><div class="product-desc">Suino + menta e cumino · per alito fresco</div></div><div class="product-prices"><span class="price-tag main">150g · 3,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Prebiotic 90</div><div class="product-desc">Camomilla, melissa, cicoria · supporto intestinale prebiotico</div></div><div class="product-prices"><span class="price-tag main">150g · 4,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Dental Stick Medium</div><div class="product-desc">7 pezzi · camomilla, salvia, equiseto · igiene dentale</div></div><div class="product-prices"><span class="price-tag main">7pz · 3,00€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Dental Stick Large</div><div class="product-desc">7 pezzi · camomilla, salvia, equiseto · igiene dentale</div></div><div class="product-prices"><span class="price-tag main">7pz · 3,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Dental Stick Grain Free</div><div class="product-desc">7 pezzi · amido di patata, farina di pisello · senza cereali</div></div><div class="product-prices"><span class="price-tag main">7pz · 3,50€</span></div></div>
+  </div>
+
+  <!-- ACCESSORI CANE -->
+  <div id="accessori-cane" class="cat-section">
+    <div class="cat-title">🎾 Accessori e Giochi Cane</div>
+
+    <div class="cat-subtitle">Pettorine e Accessori — Wolly Wolf &amp; Max &amp; Molly</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Wolly Wolf</div><div class="product-name">Pettorine Wolly Wolf</div><div class="product-desc">Design anatomico · non limita il movimento delle spalle · materiali premium</div></div><div class="product-prices"><span class="price-tag main">Chiedi in negozio</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Max &amp; Molly</div><div class="product-name">Pettorine Max &amp; Molly</div><div class="product-desc">Pratica, regolabile, colorata · ottima per cani attivi</div></div><div class="product-prices"><span class="price-tag main">Chiedi in negozio</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Ringhio</div><div class="product-name">Guinzagli Ringhio</div><div class="product-desc">Resistenti e sicuri · varie misure disponibili</div></div><div class="product-prices"><span class="price-tag main">Chiedi in negozio</span></div></div>
+
+    <div class="cat-subtitle">Giochi — Peluche e Corde</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Corda ad Anello in Lana Riciclata</div></div><div class="product-prices"><span class="price-tag main">10,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Corda a 2 Nodi in Lana Riciclata</div></div><div class="product-prices"><span class="price-tag main">8,60€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Corda a 3 Nodi in Lana Riciclata</div></div><div class="product-prices"><span class="price-tag main">11,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Corda a 4 Nodi in Lana Riciclata</div></div><div class="product-prices"><span class="price-tag main">10,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Silly Rope</div></div><div class="product-prices"><span class="price-tag main">9,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Polipo Rosa 66cm</div></div><div class="product-prices"><span class="price-tag main">25,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Polipo Blu 66cm</div></div><div class="product-prices"><span class="price-tag main">25,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Polipo Verde 66cm</div></div><div class="product-prices"><span class="price-tag main">25,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Anatra Peluche</div><div class="product-desc">Disponibile in 3 misure</div></div><div class="product-prices"><span class="price-tag main">41cm · 16,50€</span><span class="price-tag">66cm · 25,50€</span><span class="price-tag">91cm · 32,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Coccodrillo Peluche</div><div class="product-desc">Disponibile in 3 misure</div></div><div class="product-prices"><span class="price-tag main">41cm · 16,50€</span><span class="price-tag">66cm · 25,50€</span><span class="price-tag">91cm · 32,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Balena Peluche</div><div class="product-desc">Disponibile in 3 misure</div></div><div class="product-prices"><span class="price-tag main">41cm · 16,50€</span><span class="price-tag">66cm · 25,50€</span><span class="price-tag">91cm · 32,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Oca Peluche</div><div class="product-desc">Disponibile in 3 misure</div></div><div class="product-prices"><span class="price-tag main">41cm · 16,50€</span><span class="price-tag">66cm · 25,50€</span><span class="price-tag">91cm · 32,50€</span></div></div>
+  </div>
+
+  <!-- PET CARE -->
+  <div id="petcare" class="cat-section">
+    <div class="cat-title">🛁 Pet Care</div>
+
+    <div class="cat-subtitle">Igiene e Benessere — Welldog</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Dentifricio Spray</div><div class="product-desc">Salvia, camomilla, equiseto, menta · igiene orale naturale</div></div><div class="product-prices"><span class="price-tag main">9,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Profumo agli Agrumi</div><div class="product-desc">100ml · bergamia, fiori d'arancio</div></div><div class="product-prices"><span class="price-tag main">100ml · 13,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Profumo Floreale</div><div class="product-desc">100ml · dendrobium, rosa canina</div></div><div class="product-prices"><span class="price-tag main">100ml · 13,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Spray Scioglinodi</div><div class="product-desc">250ml · proteine grano, aloe, canapa</div></div><div class="product-prices"><span class="price-tag main">250ml · 13,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Shampoo Secco</div><div class="product-desc">250ml · aloe, tea tree, lavanda</div></div><div class="product-prices"><span class="price-tag main">250ml · 13,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Allontana Insetti</div><div class="product-desc">250ml · neem, citronella, geranio, lavanda</div></div><div class="product-prices"><span class="price-tag main">250ml · 13,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Crema Lenitiva per Zampe</div><div class="product-desc">50ml · burro di karité, canapa, neem</div></div><div class="product-prices"><span class="price-tag main">50ml · 13,90€</span></div></div>
+
+    <div class="cat-subtitle">Shampoo Premium</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Shampoo Balsamo Cute Oleosa</div><div class="product-desc">250ml · ceramidi, panthenolo, ribes nero</div></div><div class="product-prices"><span class="price-tag main">250ml · 17,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Shampoo Balsamo Cute Sensibile</div><div class="product-desc">250ml · ceramidi, glicirrizato, panthenolo</div></div><div class="product-prices"><span class="price-tag main">250ml · 17,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Shampoo Balsamo Pelo Lungo</div><div class="product-desc">250ml · ceramidi, panthenolo, ribes nero</div></div><div class="product-prices"><span class="price-tag main">250ml · 17,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Spray Pelo Morbido</div><div class="product-desc">75ml · ceramidi, panthenolo, ribes nero</div></div><div class="product-prices"><span class="price-tag main">75ml · 14,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Spray Zampe Pulite</div><div class="product-desc">75ml · clorexidina, aloe, tea tree · igiene post-passeggiata</div></div><div class="product-prices"><span class="price-tag main">75ml · 14,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Crema per Polpastrelli</div><div class="product-desc">50ml · karité, avocado, lavanda, echinacea</div></div><div class="product-prices"><span class="price-tag main">50ml · 16,90€</span></div></div>
+
+    <div class="cat-subtitle">Salviettine (35 pezzi)</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Salviettine Antiodore / Antiprurito</div></div><div class="product-prices"><span class="price-tag main">35pz · 6,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Salviettine alla Clorexidina</div></div><div class="product-prices"><span class="price-tag main">35pz · 5,40€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Salviettine Vari Profumi</div><div class="product-desc">Menta/Eucalipto · Latte di Mandorla · Argan/Camelia · Talco · Rosa/Gelsomino · Aloe · Agrumi · Jojoba/Avena · Lavanda/Gelsomino · Muschio Bianco</div></div><div class="product-prices"><span class="price-tag main">35pz · 3,95€</span></div></div>
+  </div>
+
+  <!-- CROCCHETTE GATTO -->
+  <div id="gatto-crocchette" class="cat-section">
+    <div class="cat-title">🐱 Crocchette Gatto</div>
+
+    <div class="cat-subtitle">Harper & Bone</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Kitten</div><div class="product-desc">Pollo 18,5% + fresco 15,3%, tacchino, anatra · glucosamina, condroitina, verdure fresche</div></div><div class="product-prices"><span class="price-tag main">2kg · 14,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Adulto Flavour of the Farm</div><div class="product-desc">Tacchino, maiale iberico, anatra, agnello · FOS, MOS, verdure fresche</div></div><div class="product-prices"><span class="price-tag main">2kg · 15,09€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Adulto Ocean Wonders</div><div class="product-desc">Salmone fresco 16%, tonno fresco 15%, riso integrale · omega-3</div></div><div class="product-prices"><span class="price-tag main">2kg · 15,09€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Sterilizzato Flavour of the Farm</div><div class="product-desc">Per sterilizzati · pollo + fegato tacchino, anatra · FOS, MOS</div></div><div class="product-prices"><span class="price-tag main">2kg · 15,09€</span><span class="price-tag">5kg · 30,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Sterilizzato Fresh Market</div><div class="product-desc">Per sterilizzati · maiale iberico, tacchino, agnello · FOS, MOS</div></div><div class="product-prices"><span class="price-tag main">2kg · 15,49€</span><span class="price-tag">5kg · 31,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Sterilizzato Wild Mountain</div><div class="product-desc">Per sterilizzati · maiale iberico, salmone, cervo, cinghiale · FOS, MOS</div></div><div class="product-prices"><span class="price-tag main">2kg · 15,49€</span><span class="price-tag">5kg · 31,49€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Harper & Bone</div><div class="product-name">Sterilizzato Ocean Wonders</div><div class="product-desc">Per sterilizzati · salmone fresco 18%, tonno 17% · omega-3</div></div><div class="product-prices"><span class="price-tag main">2kg · 15,09€</span><span class="price-tag">5kg · 30,09€</span></div></div>
+
+    <div class="cat-subtitle">Welldog</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Kitten Tacchino e Pollo</div><div class="product-desc">70% tacchino e pollo, patate, piselli · FOS, MOS, olio salmone</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 19,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Adulto Tacchino e Pollo</div><div class="product-desc">70% tacchino e pollo, patate, piselli · FOS, MOS</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 18,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Sterilizzato Pollo, Tonno e Salmone</div><div class="product-desc">Per sterilizzati · 70% pollo+tonno+salmone · glucosamina, condroitina</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 19,90€</span><span class="price-tag">5kg · 44,90€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Welldog</div><div class="product-name">Sterilizzato Salmone e Pesce Bianco</div><div class="product-desc">Per sterilizzati · 70% pesce · salmone, merluzzo, aringa</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 22,60€</span><span class="price-tag">5kg · 50,90€</span></div></div>
+
+    <div class="cat-subtitle">Leonardo Fresh</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Adulto Fresh al Manzo</div><div class="product-desc">43% manzo fresco + 42% pollame fresco · krill, semi di chia, alghe chlorella</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 28,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Adulto Fresh all'Anatra</div><div class="product-desc">43% anatra fresca + 42% pollame fresco · krill, semi di chia, alghe chlorella</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 28,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Adulto Fresh al Salmone</div><div class="product-desc">43% salmone fresco + 42% pollame fresco · krill, semi di chia, alghe chlorella</div></div><div class="product-prices"><span class="price-tag main">1,5kg · 28,50€</span></div></div>
+  </div>
+
+  <!-- UMIDO GATTO -->
+  <div id="gatto-umido" class="cat-section">
+    <div class="cat-title">🥣 Umido Gatto</div>
+
+    <div class="cat-subtitle">Disugual Gatto (85g · 0,85€)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Kitten al Pollo</div><div class="product-desc">30% pollo, salmone, manzo, riso</div></div><div class="product-prices"><span class="price-tag main">85g · 0,85€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Adulto al Pollo</div><div class="product-desc">30% pollo, salmone, manzo</div></div><div class="product-prices"><span class="price-tag main">85g · 0,85€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Sterilizzato al Pollo</div></div><div class="product-prices"><span class="price-tag main">85g · 0,85€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Disugual</div><div class="product-name">Sterilizzato al Manzo</div></div><div class="product-prices"><span class="price-tag main">85g · 0,85€</span></div></div>
+
+    <div class="cat-subtitle">Pura Natura Gatto (85g · 1,30€)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Kitten alla Trota</div><div class="product-desc">96% trota, uova · erbe officinali</div></div><div class="product-prices"><span class="price-tag main">85g · 1,30€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Adulto alla Quaglia</div><div class="product-desc">95% quaglia, fibra di pisello</div></div><div class="product-prices"><span class="price-tag main">85g · 1,30€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Adulto al Pollo</div></div><div class="product-prices"><span class="price-tag main">85g · 1,30€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Adulto al Tonnetto</div></div><div class="product-prices"><span class="price-tag main">85g · 1,30€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Pura Natura</div><div class="product-name">Sterilizzato Quaglia / Manzo / Salmone / Pollo</div></div><div class="product-prices"><span class="price-tag main">85g · 1,30€</span></div></div>
+
+    <div class="cat-subtitle">Natua — In Jelly e In Brodo (85g · 1,20€)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Natua</div><div class="product-name">Kitten Pollo e Prosciutto (jelly)</div><div class="product-desc">62% pollo, prosciutto 4%</div></div><div class="product-prices"><span class="price-tag main">85g · 1,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Natua</div><div class="product-name">Sterilizzato Pollo (jelly) — 3 varianti</div><div class="product-desc">Con prosciutto / con fegatini / con carote</div></div><div class="product-prices"><span class="price-tag main">85g · 1,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Natua</div><div class="product-name">Sterilizzato Tonnetto (jelly) — varie varianti</div><div class="product-desc">Con gamberi / ricciola / salmone / prosciutto / mango</div></div><div class="product-prices"><span class="price-tag main">85g · 1,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Natua</div><div class="product-name">Sterilizzato in Brodo — varie varianti</div><div class="product-desc">Pollo / pollo+formaggio / tonno / tonno+orata / tonno+salmone</div></div><div class="product-prices"><span class="price-tag main">85g · 1,20€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Natua Luxury</div><div class="product-name">Linea Luxury (jelly)</div><div class="product-desc">Pollo+agnello+anatra / tonnetto+aragosta / tonnetto+canestrello / tonnetto+granchio</div></div><div class="product-prices"><span class="price-tag main">85g · 1,60€</span></div></div>
+
+    <div class="cat-subtitle">Leonardo — Finest Selection e Pulled Beef</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo Finest</div><div class="product-name">Puro Pollo</div><div class="product-desc">70% pollo (cuore, fegato, ventriglio) + brodo</div></div><div class="product-prices"><span class="price-tag main">85g · 1,58€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo Finest</div><div class="product-name">Anatra con Formaggio</div><div class="product-desc">30% anatra + 28,5% pollo + cubetti di formaggio</div></div><div class="product-prices"><span class="price-tag main">85g · 1,58€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo Finest</div><div class="product-name">Coniglio con Mirtilli Rossi</div></div><div class="product-prices"><span class="price-tag main">85g · 1,58€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo Finest</div><div class="product-name">Selvaggina con Mirtilli</div></div><div class="product-prices"><span class="price-tag main">85g · 1,58€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo Finest</div><div class="product-name">Pesce e Gamberetti</div></div><div class="product-prices"><span class="price-tag main">85g · 1,58€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Pulled Beef Tacchino</div><div class="product-desc">Tacchino + straccetti di manzo</div></div><div class="product-prices"><span class="price-tag main">70g · 1,70€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Pulled Beef Anatra</div><div class="product-desc">Anatra + straccetti di manzo</div></div><div class="product-prices"><span class="price-tag main">70g · 1,70€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Drink per Gatti all'Anatra</div><div class="product-desc">Brodo di pollo e anatra + carne · ottimo per idratazione</div></div><div class="product-prices"><span class="price-tag main">40g · 0,79€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Leonardo</div><div class="product-name">Drink per Gatti al Salmone</div><div class="product-desc">Brodo di pollo e salmone + carne · ottimo per idratazione</div></div><div class="product-prices"><span class="price-tag main">40g · 0,79€</span></div></div>
+  </div>
+
+  <!-- SNACK GATTO -->
+  <div id="snack-gatto" class="cat-section">
+    <div class="cat-title">🐟 Snack per Gatto</div>
+
+    <div class="cat-subtitle">Orazio — Soft Bites (10g · 1,10€)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Orazio</div><div class="product-name">Pollo con Manzo</div><div class="product-desc">71% pollo, 15% manzo</div></div><div class="product-prices"><span class="price-tag main">10g · 1,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Orazio</div><div class="product-name">Pollo con Formaggio</div><div class="product-desc">78% pollo, 8% formaggio</div></div><div class="product-prices"><span class="price-tag main">10g · 1,10€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Orazio</div><div class="product-name">Pollo con Salmone</div><div class="product-desc">71% pollo, 15% salmone</div></div><div class="product-prices"><span class="price-tag main">10g · 1,10€</span></div></div>
+
+    <div class="cat-subtitle">Woolf — Premietti Semi-umidi (50g · 2,50€)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf</div><div class="product-name">Al Pollo</div><div class="product-desc">70% pollo fresco</div></div><div class="product-prices"><span class="price-tag main">50g · 2,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf</div><div class="product-name">Al Tacchino</div><div class="product-desc">80% tacchino fresco</div></div><div class="product-prices"><span class="price-tag main">50g · 2,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf</div><div class="product-name">All'Anatra</div><div class="product-desc">70% anatra fresca</div></div><div class="product-prices"><span class="price-tag main">50g · 2,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf</div><div class="product-name">Al Manzo</div><div class="product-desc">60% manzo fresco</div></div><div class="product-prices"><span class="price-tag main">50g · 2,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf</div><div class="product-name">Al Salmone</div><div class="product-desc">60% pesce fresco, 10% salmone</div></div><div class="product-prices"><span class="price-tag main">50g · 2,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf</div><div class="product-name">Al Pesce Azzurro</div><div class="product-desc">70% pesce azzurro fresco (di cui sgombro 40%)</div></div><div class="product-prices"><span class="price-tag main">50g · 2,50€</span></div></div>
+
+    <div class="cat-subtitle">Woolf Creamy — Snack Liquidi (5x14g · 2,80€)</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf Creamy</div><div class="product-name">Al Manzo</div><div class="product-desc">30% manzo, 20% pollo · estratto di alghe, prebiotici</div></div><div class="product-prices"><span class="price-tag main">5x14g · 2,80€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf Creamy</div><div class="product-name">All'Anatra</div><div class="product-desc">50% anatra · erba gatta</div></div><div class="product-prices"><span class="price-tag main">5x14g · 2,80€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf Creamy</div><div class="product-name">Anatra e Salmone</div><div class="product-desc">30% anatra, 20% salmone · prebiotici</div></div><div class="product-prices"><span class="price-tag main">5x14g · 2,80€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Woolf Creamy</div><div class="product-name">Merluzzo e Pollo</div><div class="product-desc">30% merluzzo, 20% pollo · estratto di yucca</div></div><div class="product-prices"><span class="price-tag main">5x14g · 2,80€</span></div></div>
+  </div>
+
+  <!-- ACCESSORI GATTO -->
+  <div id="accessori-gatto" class="cat-section">
+    <div class="cat-title">🏠 Accessori Gatto</div>
+
+    <div class="cat-subtitle">Lettiere Nest</div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Nest</div><div class="product-name">Sabbia Bentonite</div><div class="product-desc">Agglomerante · ottima assorbenza</div></div><div class="product-prices"><span class="price-tag main">10L · 12,50€</span></div></div>
+    <div class="product-card"><div class="product-info"><div class="product-brand">Nest</div><div class="product-name">Sabbia Bentonite con Carboni Attivi</div><div class="product-desc">Controllo odori potenziato con carboni attivi</div></div><div class="product-prices"><span class="price-tag main">5L · 6,90€</span><span class="price-tag">10L · 12,90€</span></div></div>
+
+    <div class="cat-subtitle">Accessori</div>
+    <div class="product-card"><div class="product-info"><div class="product-name">Dissuasore Pipì Cani e Gatti</div><div class="product-desc">Spray repellente per zone non idonee</div></div><div class="product-prices"><span class="price-tag main">10,90€</span></div></div>
+  </div>
+
+</div><!-- /catalog -->
+
+<!-- INFO SECTION -->
+<div class="info-section">
+  <div class="info-card">
+    <h3>📍 Dove siamo</h3>
+    <div class="info-row"><span class="icon">🗺️</span><span>Via Giovanni Paolo II, 45/B · Azzano Mella (BS)</span></div>
+    <div class="info-row"><span class="icon">📞</span><span>+39 393 5679456 (WhatsApp attivo)</span></div>
+    <div class="info-row"><span class="icon">🚗</span><span>Parcheggio disponibile · zona bassa bresciana</span></div>
+  </div>
+  <div class="info-card">
+    <h3>🐾 Chi siamo</h3>
+    <div class="info-row"><span class="icon">👨</span><span><strong>Daniele</strong> — educatore cinofilo, istruttore rally obedience</span></div>
+    <div class="info-row"><span class="icon">🐕</span><span><strong>Wendy</strong> — Eurasier, 9 anni, la vera protagonista di questa storia. La trovate spesso in negozio!</span></div>
+    <div class="info-row"><span class="icon">✅</span><span>Ogni prodotto è selezionato personalmente da Daniele — solo brand non GDO, solo qualità reale</span></div>
+  </div>
+  <div class="info-card">
+    <h3>🚚 Servizi</h3>
+    <div class="info-row"><span class="icon">🏠</span><span>Consegna direttamente a casa disponibile</span></div>
+    <div class="info-row"><span class="icon">💬</span><span>Consulenza gratuita in negozio o su WhatsApp</span></div>
+    <div class="info-row"><span class="icon">❄️</span><span>Da settembre: BARF disponibile con consulenza alimentare professionale</span></div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <strong>A Passo di Coda Pet Store</strong><br>
+  Via G. Paolo II 45/B · Azzano Mella (BS) · +39 393 5679456<br><br>
+  I prezzi possono subire variazioni · Per disponibilità aggiornata contattaci su WhatsApp
+</div>
+
+<!-- FLOATING WHATSAPP -->
+<a href="https://wa.me/393935679456" class="wa-float" title="Scrivici su WhatsApp">💬</a>
+
+<script>
+function showCat(id, btn) {
+  document.querySelectorAll('.cat-section').forEach(s => s.classList.remove('visible'));
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('visible');
+  btn.classList.add('active');
+  btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  document.querySelector('.catalog').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
