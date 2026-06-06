@@ -14,6 +14,8 @@
   ::-webkit-scrollbar-track{background:#1A1410}
   ::-webkit-scrollbar-thumb{background:#3D2E1E;border-radius:3px}
   select option{background:#1A1410;color:#F5EDE3}
+  @media print{.no-print{display:none!important}.print-only{display:block!important}}
+  .print-only{display:none}
 </style>
 </head>
 <body>
@@ -24,34 +26,21 @@ const { useState, useEffect, useRef, useCallback } = React;
 const KEYS = { products:"apc_products", sales:"apc_sales", expenses:"apc_expenses", settings:"apc_settings" };
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch { return null; } };
 const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-
-// IVA default per categoria
 const ivaForCategory = (cat) => (cat||"").toUpperCase().includes("BARF") ? 10 : 22;
-
-const SAMPLE_PRODUCTS = [
-  { id:"1", name:"Crocchette Premium Pollo 3kg", barcode:"8001234567890", buyPrice:12.50, sellPrice:22.90, stock:15, minStock:5, category:"Cibo secco", iva:22 },
-  { id:"2", name:"Cibo umido Vitello 400g", barcode:"8009876543210", buyPrice:1.80, sellPrice:3.50, stock:40, minStock:12, category:"Cibo umido", iva:22 },
-  { id:"3", name:"Snack naturale manzo", barcode:"8005551234567", buyPrice:4.20, sellPrice:8.90, stock:22, minStock:8, category:"Snack", iva:22 },
-  { id:"4", name:"Barf Manzo 500g (Italia Pet Food)", barcode:"", buyPrice:3.10, sellPrice:6.50, stock:18, minStock:6, category:"BARF", iva:10 },
-  { id:"5", name:"Pettorina comfort taglia M", barcode:"8007778889990", buyPrice:11.00, sellPrice:24.90, stock:8, minStock:3, category:"Accessori", iva:22 },
-];
-const SAMPLE_EXPENSES = [
-  { id:"e1", month:"2026-05", label:"Affitto", amount:850 },
-  { id:"e2", month:"2026-05", label:"Utenze (luce/gas)", amount:180 },
-  { id:"e3", month:"2026-06", label:"Affitto", amount:850 },
-  { id:"e4", month:"2026-06", label:"Utenze (luce/gas)", amount:160 },
-];
-
 const fmt = (n) => new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"}).format(n||0);
 const nowISO = () => new Date().toISOString();
 const thisMonth = () => new Date().toISOString().slice(0,7);
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-
-// Dato prezzo IVA inclusa, estrae imponibile e IVA
 const scorporaIva = (prezzoIvato, aliquota) => {
   const imponibile = prezzoIvato / (1 + aliquota / 100);
-  const iva = prezzoIvato - imponibile;
-  return { imponibile, iva };
+  return { imponibile, iva: prezzoIvato - imponibile };
+};
+
+// Giorni alla scadenza
+const daysToExpiry = (dateStr) => {
+  if(!dateStr) return null;
+  const diff = new Date(dateStr) - new Date();
+  return Math.ceil(diff / (1000*60*60*24));
 };
 
 const iStyle = { background:"#1A1410", border:"1px solid #3D2E1E", borderRadius:8, padding:"8px 12px", color:"#F5EDE3", fontSize:13, outline:"none", width:"100%", boxSizing:"border-box" };
@@ -68,52 +57,66 @@ function StatCard({label,value,sub,color,icon}){
 
 // ─── DASHBOARD ───────────────────────────────────────────────────────────────
 function Dashboard({products,sales,expenses,getSalesThisMonth,getSalesByProduct}){
-  const m = thisMonth();
-  const salesMonth = getSalesThisMonth();
-  const salesMap = getSalesByProduct(m);
-
-  // Calcoli con IVA scorporata
-  let totalLordo=0, totalImponibile=0, totalIvaCollettata=0, totalCostGoods=0;
-  salesMonth.forEach(s => {
-    const lordo = s.qty * s.sellPrice;
-    const { imponibile, iva } = scorporaIva(lordo, s.iva||22);
-    totalLordo += lordo;
-    totalImponibile += imponibile;
-    totalIvaCollettata += iva;
-    totalCostGoods += s.qty * s.buyPrice;
+  const m=thisMonth();
+  const salesMonth=getSalesThisMonth();
+  const salesMap=getSalesByProduct(m);
+  let totalLordo=0,totalImponibile=0,totalIvaCollettata=0,totalCostGoods=0,totalSconti=0;
+  salesMonth.forEach(s=>{
+    const lordo=s.qty*s.sellPrice;
+    const {imponibile,iva}=scorporaIva(lordo,s.iva||22);
+    totalLordo+=lordo;
+    totalImponibile+=imponibile;
+    totalIvaCollettata+=iva;
+    totalCostGoods+=s.qty*s.buyPrice;
+    totalSconti+=(s.discountAmount||0);
   });
-  const grossMargin = totalImponibile - totalCostGoods;
-  const totalExpenses = expenses.filter(e=>e.month===m).reduce((a,e)=>a+e.amount,0);
-  const netResult = grossMargin - totalExpenses;
+  const grossMargin=totalImponibile-totalCostGoods;
+  const totalExpenses=expenses.filter(e=>e.month===m).reduce((a,e)=>a+e.amount,0);
+  const netResult=grossMargin-totalExpenses;
+  const lowStock=products.filter(p=>p.stock<=(p.minStock||0));
+  const outOfStock=products.filter(p=>p.stock===0);
 
-  const lowStock = products.filter(p=>p.stock<=(p.minStock||0));
-  const outOfStock = products.filter(p=>p.stock===0);
-  const topProducts = Object.entries(salesMap).map(([id,d])=>({product:products.find(p=>p.id===id),...d})).filter(x=>x.product).sort((a,b)=>b.revenue-a.revenue).slice(0,5);
+  // Alert scadenze
+  const today = new Date();
+  const expiryAlerts = products.filter(p=>p.expiryDate).map(p=>({...p,days:daysToExpiry(p.expiryDate)})).filter(p=>p.days<=30).sort((a,b)=>a.days-b.days);
+
+  const topProducts=Object.entries(salesMap).map(([id,d])=>({product:products.find(p=>p.id===id),...d})).filter(x=>x.product).sort((a,b)=>b.revenue-a.revenue).slice(0,5);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:12}}>
         <StatCard label="Incassato (IVA incl.)" value={fmt(totalLordo)} sub={salesMonth.length+" vendite"} color="#D96C05" icon="💰"/>
-        <StatCard label="Fatturato netto (impon.)" value={fmt(totalImponibile)} sub={"IVA collettata: "+fmt(totalIvaCollettata)} color="#F28C35" icon="🧾"/>
-        <StatCard label="Margine lordo" value={fmt(grossMargin)} sub={(totalImponibile>0?((grossMargin/totalImponibile)*100).toFixed(1):0)+"% sull'imponibile"} color={grossMargin>=0?"#5CB85C":"#E05252"} icon="📈"/>
-        <StatCard label="Spese mese" value={fmt(totalExpenses)} sub="costi fissi" color="#E8C44A" icon="💳"/>
+        <StatCard label="Fatturato netto" value={fmt(totalImponibile)} sub={"IVA: "+fmt(totalIvaCollettata)} color="#F28C35" icon="🧾"/>
+        <StatCard label="Margine lordo" value={fmt(grossMargin)} sub={(totalImponibile>0?((grossMargin/totalImponibile)*100).toFixed(1):0)+"%"} color={grossMargin>=0?"#5CB85C":"#E05252"} icon="📈"/>
+        <StatCard label="Spese mese" value={fmt(totalExpenses)} color="#E8C44A" icon="💳"/>
         <StatCard label="Risultato netto" value={fmt(netResult)} sub={netResult>=0?"✅ In positivo":"⚠️ In negativo"} color={netResult>=0?"#5CB85C":"#E05252"} icon="🏁"/>
-        <StatCard label="IVA da versare" value={fmt(totalIvaCollettata)} sub="da tenere da parte" color="#A78BFA" icon="🏛️"/>
+        <StatCard label="IVA da versare" value={fmt(totalIvaCollettata)} sub="tenere da parte" color="#A78BFA" icon="🏛️"/>
+        {totalSconti>0&&<StatCard label="Sconti applicati" value={fmt(totalSconti)} sub="questo mese" color="#E05252" icon="🏷️"/>}
       </div>
 
+      {/* Alert scadenze */}
+      {expiryAlerts.length>0&&(
+        <div style={{background:"#1E1A2E",border:"1px solid #5A3A8A",borderRadius:12,padding:14}}>
+          <div style={{fontWeight:700,fontSize:14,color:"#A78BFA",marginBottom:10}}>📅 Alert Scadenze</div>
+          {expiryAlerts.map(p=>{
+            const color=p.days<=0?"#E05252":p.days<=7?"#E05252":p.days<=14?"#E8C44A":"#A78BFA";
+            const label=p.days<=0?"SCADUTO":p.days===1?"Scade domani":"Scade in "+p.days+" giorni";
+            return(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+                <span>{p.name}</span>
+                <span style={{color,fontWeight:700}}>{label} ({new Date(p.expiryDate).toLocaleDateString("it-IT")})</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Alert stock */}
       {(lowStock.length>0||outOfStock.length>0)&&(
         <div style={{background:"#2E1A0E",border:"1px solid #7A3B0A",borderRadius:12,padding:14}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,color:"#F28C35",fontWeight:700,fontSize:14}}>⚠️ Allerte Scorte</div>
-          {outOfStock.map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-              <span>{p.name}</span><span style={{color:"#E05252",fontWeight:700}}>ESAURITO</span>
-            </div>
-          ))}
-          {lowStock.filter(p=>p.stock>0).map(p=>(
-            <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-              <span>{p.name}</span><span style={{color:"#E8C44A"}}>Solo {p.stock} pz (min: {p.minStock})</span>
-            </div>
-          ))}
+          <div style={{fontWeight:700,fontSize:14,color:"#F28C35",marginBottom:10}}>⚠️ Allerte Scorte</div>
+          {outOfStock.map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}><span>{p.name}</span><span style={{color:"#E05252",fontWeight:700}}>ESAURITO</span></div>))}
+          {lowStock.filter(p=>p.stock>0).map(p=>(<div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}><span>{p.name}</span><span style={{color:"#E8C44A"}}>Solo {p.stock} pz (min: {p.minStock})</span></div>))}
         </div>
       )}
 
@@ -130,12 +133,7 @@ function Dashboard({products,sales,expenses,getSalesThisMonth,getSalesByProduct}
           ))}
         </div>
       )}
-
-      {salesMonth.length===0&&(
-        <div style={{textAlign:"center",padding:40,color:"#A08060",fontSize:14}}>
-          Nessuna vendita registrata questo mese.<br/>Vai in <strong style={{color:"#D96C05"}}>Cassa / Vendite</strong> per iniziare!
-        </div>
-      )}
+      {salesMonth.length===0&&<div style={{textAlign:"center",padding:40,color:"#A08060",fontSize:14}}>Nessuna vendita registrata questo mese.<br/>Vai in <strong style={{color:"#D96C05"}}>Cassa / Vendite</strong> per iniziare!</div>}
     </div>
   );
 }
@@ -146,6 +144,12 @@ function Cassa({products,setProducts,sales,setSales}){
   const [cart,setCart]=useState([]);
   const [searchQ,setSearchQ]=useState("");
   const [msg,setMsg]=useState(null);
+  // Sconti per articolo: {productId: {type:'%'|'€', value:''}}
+  const [itemDiscounts,setItemDiscounts]=useState({});
+  // Sconto totale
+  const [totalDiscount,setTotalDiscount]=useState({type:"%",value:""});
+  const [showReceipt,setShowReceipt]=useState(false);
+  const [lastSale,setLastSale]=useState(null);
   const barcodeRef=useRef(null);
   useEffect(()=>{barcodeRef.current?.focus();},[]);
 
@@ -163,72 +167,109 @@ function Cassa({products,setProducts,sales,setSales}){
 
   const handleBarcode=(e)=>{
     if(e.key==="Enter"){
-      const code=barcodeInput.trim();
-      if(!code)return;
+      const code=barcodeInput.trim();if(!code)return;
       const p=products.find(x=>x.barcode===code);
       if(p){addToCart(p);setBarcodeInput("");}
       else showMsg("Codice non trovato: "+code,"err");
     }
   };
 
-  // Calcoli carrello con IVA
-  const cartRows = cart.map(item => {
-    const lordo = item.qty * item.sellPrice;
-    const { imponibile, iva } = scorporaIva(lordo, item.iva||22);
-    return { ...item, lordo, imponibile, iva };
-  });
-  const cartLordo = cartRows.reduce((a,r)=>a+r.lordo,0);
-  const cartImponibile = cartRows.reduce((a,r)=>a+r.imponibile,0);
-  const cartIva = cartRows.reduce((a,r)=>a+r.iva,0);
+  // Calcola sconto per articolo
+  const getItemDiscount=(item)=>{
+    const d=itemDiscounts[item.id];
+    if(!d||!d.value||parseFloat(d.value)===0)return 0;
+    const base=item.qty*item.sellPrice;
+    if(d.type==="%"){const pct=Math.min(100,parseFloat(d.value)||0);return base*(pct/100);}
+    return Math.min(base,parseFloat(d.value)||0);
+  };
 
-  // IVA raggruppata per aliquota
-  const ivaGroups = {};
-  cartRows.forEach(r=>{
-    const k = r.iva||22;
-    if(!ivaGroups[k]) ivaGroups[k]={base:0,iva:0};
-    ivaGroups[k].base += r.imponibile;
-    ivaGroups[k].iva += r.iva;
+  // Subtotale dopo sconti articolo
+  const subtotalAfterItemDiscounts=cart.reduce((a,item)=>a+(item.qty*item.sellPrice-getItemDiscount(item)),0);
+
+  // Sconto totale
+  const getTotalDiscount=()=>{
+    if(!totalDiscount.value||parseFloat(totalDiscount.value)===0)return 0;
+    if(totalDiscount.type==="%"){const pct=Math.min(100,parseFloat(totalDiscount.value)||0);return subtotalAfterItemDiscounts*(pct/100);}
+    return Math.min(subtotalAfterItemDiscounts,parseFloat(totalDiscount.value)||0);
+  };
+
+  const totalDiscountAmt=getTotalDiscount();
+  const cartLordo=subtotalAfterItemDiscounts-totalDiscountAmt;
+  const totalItemDiscounts=cart.reduce((a,item)=>a+getItemDiscount(item),0);
+  const totalAllDiscounts=totalItemDiscounts+totalDiscountAmt;
+
+  // Calcola IVA sul totale finale
+  const cartRows=cart.map(item=>{
+    const itemDisc=getItemDiscount(item);
+    const ratio=(cart.length>0&&subtotalAfterItemDiscounts>0)?(item.qty*item.sellPrice-itemDisc)/subtotalAfterItemDiscounts:0;
+    const itemTotalDisc=itemDisc+totalDiscountAmt*ratio;
+    const finalPrice=(item.qty*item.sellPrice)-itemTotalDisc;
+    const {imponibile,iva}=scorporaIva(finalPrice,item.iva||22);
+    return{...item,finalPrice,imponibile,iva};
   });
+  const cartImponibile=cartRows.reduce((a,r)=>a+r.imponibile,0);
+  const cartIva=cartRows.reduce((a,r)=>a+r.iva,0);
+
+  // Raggruppa IVA per aliquota
+  const ivaGroups={};
+  cartRows.forEach(r=>{const k=r.iva||22;if(!ivaGroups[k]){ivaGroups[k]={base:0,iva:0};}ivaGroups[k].base+=r.imponibile;ivaGroups[k].iva+=r.iva;});
 
   const confirmSale=()=>{
     if(cart.length===0)return;
     const now=nowISO();
-    const newSales=cart.map(item=>({
-      id:uid(), productId:item.id, qty:item.qty,
-      sellPrice:item.sellPrice, buyPrice:item.buyPrice,
-      iva:item.iva||22, date:now, name:item.name
-    }));
+    const saleId=uid();
+    const newSales=cart.map(item=>{
+      const row=cartRows.find(r=>r.id===item.id);
+      const discOnItem=getItemDiscount(item);
+      const ratio=subtotalAfterItemDiscounts>0?(item.qty*item.sellPrice-discOnItem)/subtotalAfterItemDiscounts:0;
+      const discShare=totalDiscountAmt*ratio;
+      return{
+        id:uid(),saleGroupId:saleId,productId:item.id,qty:item.qty,
+        sellPrice:item.sellPrice,buyPrice:item.buyPrice,iva:item.iva||22,
+        discountAmount:(discOnItem+discShare),finalPrice:row.finalPrice,
+        date:now,name:item.name
+      };
+    });
+    const receipt={
+      id:saleId,date:now,items:cart.map(item=>{
+        const row=cartRows.find(r=>r.id===item.id);
+        return{name:item.name,qty:item.qty,unitPrice:item.sellPrice,iva:item.iva||22,discount:getItemDiscount(item),finalPrice:row.finalPrice};
+      }),
+      totalDiscount:totalDiscountAmt,itemDiscounts:totalItemDiscounts,
+      subtotal:cart.reduce((a,i)=>a+i.qty*i.sellPrice,0),
+      total:cartLordo,imponibile:cartImponibile,iva:cartIva
+    };
     setSales(prev=>[...prev,...newSales]);
     setProducts(prev=>prev.map(p=>{const ci=cart.find(c=>c.id===p.id);return ci?{...p,stock:p.stock-ci.qty}:p;}));
-    setCart([]);
+    setLastSale(receipt);
+    setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""});
+    setShowReceipt(true);
     showMsg("✅ Vendita registrata! Totale: "+fmt(cartLordo),"ok");
   };
 
   const filteredProducts=products.filter(p=>p.name.toLowerCase().includes(searchQ.toLowerCase())||p.barcode?.includes(searchQ));
-  const recentSales=[...sales].reverse().slice(0,15);
+  const recentSales=[...sales].reverse().slice(0,12);
 
   return (
-    <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:16}}>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 360px",gap:16}}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         {/* Scanner */}
         <div style={{background:"#231A12",border:"2px solid #D96C05",borderRadius:12,padding:14}}>
           <div style={{fontSize:12,color:"#A08060",marginBottom:6}}>📡 Scansiona o inserisci codice a barre (premi Invio)</div>
-          <input ref={barcodeRef} value={barcodeInput} onChange={e=>setBarcodeInput(e.target.value)} onKeyDown={handleBarcode}
-            placeholder="Punta il lettore qui oppure digita il codice..."
-            style={{...iStyle,fontSize:15}} autoComplete="off"/>
+          <input ref={barcodeRef} value={barcodeInput} onChange={e=>setBarcodeInput(e.target.value)} onKeyDown={handleBarcode} placeholder="Punta il lettore qui oppure digita il codice..." style={{...iStyle,fontSize:15}} autoComplete="off"/>
           {msg&&<div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:msg.type==="ok"?"#1E3A1E":"#3A1E1E",color:msg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{msg.text}</div>}
         </div>
 
         {/* Ricerca manuale */}
         <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-          <div style={{fontSize:12,color:"#A08060",marginBottom:8}}>🔍 Ricerca manuale (prodotti senza barcode)</div>
+          <div style={{fontSize:12,color:"#A08060",marginBottom:8}}>🔍 Ricerca manuale</div>
           <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Cerca per nome o codice..." style={{...iStyle,marginBottom:10}}/>
-          <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+          <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
             {filteredProducts.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",background:"#1A1410",borderRadius:8,cursor:"pointer"}} onClick={()=>addToCart(p)}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13}}>{p.name}</div>
-                  <div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"Nessun barcode"} · Stock: {p.stock} · IVA: {p.iva||22}%</div>
+                  <div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"No barcode"} · Stock: {p.stock} · IVA {p.iva||22}%</div>
                 </div>
                 <div style={{fontWeight:700,color:"#D96C05",fontSize:13}}>{fmt(p.sellPrice)}</div>
                 <button onClick={e=>{e.stopPropagation();addToCart(p);}} style={{background:"#D96C05",color:"white",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12}}>+</button>
@@ -242,13 +283,12 @@ function Cassa({products,setProducts,sales,setSales}){
           <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>🕒 Vendite recenti</div>
           {recentSales.length===0&&<div style={{color:"#A08060",fontSize:13}}>Nessuna vendita ancora.</div>}
           {recentSales.map(s=>{
-            const lordo=s.qty*s.sellPrice;
-            const {imponibile}=scorporaIva(lordo,s.iva||22);
+            const lordo=s.finalPrice||s.qty*s.sellPrice;
             return(
               <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
                 <span style={{color:"#A08060"}}>{new Date(s.date).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
                 <span style={{flex:1,paddingLeft:8}}>{s.name} ×{s.qty}</span>
-                <span style={{color:"#A08060",fontSize:11,paddingRight:6}}>IVA {s.iva||22}%</span>
+                {s.discountAmount>0&&<span style={{color:"#E05252",fontSize:11,paddingRight:6}}>-{fmt(s.discountAmount)}</span>}
                 <span style={{color:"#D96C05",fontWeight:600}}>{fmt(lordo)}</span>
               </div>
             );
@@ -256,27 +296,58 @@ function Cassa({products,setProducts,sales,setSales}){
         </div>
       </div>
 
-      {/* Carrello */}
+      {/* CARRELLO */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16,height:"fit-content",position:"sticky",top:80}}>
         <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>🛒 Carrello ({cart.length})</div>
         {cart.length===0&&<div style={{color:"#A08060",fontSize:13,textAlign:"center",padding:20}}>Vuoto — scansiona o cerca un prodotto</div>}
-        {cart.map(item=>(
-          <div key={item.id} style={{marginBottom:10,padding:"8px 0",borderBottom:"1px solid #3D2E1E"}}>
-            <div style={{fontSize:13,marginBottom:2}}>{item.name}</div>
-            <div style={{fontSize:11,color:"#A08060",marginBottom:4}}>IVA {item.iva||22}% · {fmt(item.sellPrice)}/pz</div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <button onClick={()=>setCart(prev=>prev.map(i=>i.id===item.id&&i.qty>1?{...i,qty:i.qty-1}:i))} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:4,width:24,height:24,cursor:"pointer"}}>-</button>
-              <span style={{minWidth:24,textAlign:"center",fontSize:14,fontWeight:700}}>{item.qty}</span>
-              <button onClick={()=>setCart(prev=>prev.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:4,width:24,height:24,cursor:"pointer"}}>+</button>
-              <span style={{marginLeft:"auto",color:"#D96C05",fontWeight:700}}>{fmt(item.qty*item.sellPrice)}</span>
-              <button onClick={()=>setCart(prev=>prev.filter(i=>i.id!==item.id))} style={{background:"none",border:"none",color:"#A08060",cursor:"pointer",padding:2}}>✕</button>
+
+        {cart.map(item=>{
+          const disc=itemDiscounts[item.id]||{type:"%",value:""};
+          const discAmt=getItemDiscount(item);
+          return(
+            <div key={item.id} style={{marginBottom:12,padding:"10px 0",borderBottom:"1px solid #3D2E1E"}}>
+              <div style={{fontSize:13,marginBottom:2,fontWeight:600}}>{item.name}</div>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:6}}>IVA {item.iva||22}% · {fmt(item.sellPrice)}/pz</div>
+              {/* Quantità */}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <button onClick={()=>setCart(prev=>prev.map(i=>i.id===item.id&&i.qty>1?{...i,qty:i.qty-1}:i))} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:4,width:26,height:26,cursor:"pointer",fontSize:15}}>-</button>
+                <span style={{minWidth:24,textAlign:"center",fontSize:14,fontWeight:700}}>{item.qty}</span>
+                <button onClick={()=>setCart(prev=>prev.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:4,width:26,height:26,cursor:"pointer",fontSize:15}}>+</button>
+                <span style={{marginLeft:"auto",color:discAmt>0?"#A08060":"#D96C05",fontWeight:700,textDecoration:discAmt>0?"line-through":"none",fontSize:13}}>{fmt(item.qty*item.sellPrice)}</span>
+                {discAmt>0&&<span style={{color:"#5CB85C",fontWeight:700,fontSize:13}}>{fmt(item.qty*item.sellPrice-discAmt)}</span>}
+                <button onClick={()=>setCart(prev=>prev.filter(i=>i.id!==item.id))} style={{background:"none",border:"none",color:"#A08060",cursor:"pointer",padding:2,fontSize:13}}>✕</button>
+              </div>
+              {/* Sconto articolo */}
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:11,color:"#A08060",whiteSpace:"nowrap"}}>Sconto art.:</span>
+                <select value={disc.type} onChange={e=>setItemDiscounts(prev=>({...prev,[item.id]:{...disc,type:e.target.value}}))} style={{...iStyle,width:60,padding:"4px 6px",fontSize:11}}>
+                  <option value="%">%</option>
+                  <option value="€">€</option>
+                </select>
+                <input type="number" min="0" value={disc.value} onChange={e=>setItemDiscounts(prev=>({...prev,[item.id]:{...disc,value:e.target.value}}))} placeholder="0" style={{...iStyle,width:70,padding:"4px 8px",fontSize:11}}/>
+                {discAmt>0&&<span style={{fontSize:11,color:"#E05252",whiteSpace:"nowrap"}}>-{fmt(discAmt)}</span>}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
+
         {cart.length>0&&(
           <>
+            {/* Sconto totale */}
+            <div style={{background:"#1A1410",borderRadius:8,padding:"10px",marginBottom:8}}>
+              <div style={{fontSize:12,color:"#A08060",marginBottom:6,fontWeight:600}}>🏷️ Sconto sul totale:</div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <select value={totalDiscount.type} onChange={e=>setTotalDiscount(d=>({...d,type:e.target.value}))} style={{...iStyle,width:60,padding:"4px 6px",fontSize:12}}>
+                  <option value="%">%</option>
+                  <option value="€">€</option>
+                </select>
+                <input type="number" min="0" value={totalDiscount.value} onChange={e=>setTotalDiscount(d=>({...d,value:e.target.value}))} placeholder="0" style={{...iStyle,flex:1,padding:"4px 8px",fontSize:12}}/>
+                {totalDiscountAmt>0&&<span style={{fontSize:12,color:"#E05252",whiteSpace:"nowrap",fontWeight:700}}>-{fmt(totalDiscountAmt)}</span>}
+              </div>
+            </div>
+
             {/* Riepilogo IVA */}
-            <div style={{background:"#1A1410",borderRadius:8,padding:"8px 10px",marginTop:4,marginBottom:8,fontSize:12}}>
+            <div style={{background:"#1A1410",borderRadius:8,padding:"8px 10px",marginBottom:8,fontSize:12}}>
               <div style={{color:"#A08060",marginBottom:4,fontWeight:600}}>Riepilogo IVA:</div>
               {Object.entries(ivaGroups).map(([aliq,v])=>(
                 <div key={aliq} style={{display:"flex",justifyContent:"space-between",color:"#A08060",marginBottom:2}}>
@@ -285,40 +356,71 @@ function Cassa({products,setProducts,sales,setSales}){
                 </div>
               ))}
               <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #3D2E1E",paddingTop:4,marginTop:4}}>
-                <span style={{color:"#A08060"}}>Imponibile</span>
-                <span>{fmt(cartImponibile)}</span>
+                <span style={{color:"#A08060"}}>Imponibile</span><span>{fmt(cartImponibile)}</span>
               </div>
               <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{color:"#A08060"}}>IVA totale</span>
-                <span style={{color:"#A78BFA"}}>{fmt(cartIva)}</span>
+                <span style={{color:"#A08060"}}>IVA totale</span><span style={{color:"#A78BFA"}}>{fmt(cartIva)}</span>
               </div>
+              {totalAllDiscounts>0&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                <span style={{color:"#A08060"}}>Sconti applicati</span><span style={{color:"#E05252"}}>-{fmt(totalAllDiscounts)}</span>
+              </div>}
             </div>
+
             <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:17,fontWeight:800,borderTop:"2px solid #3D2E1E"}}>
               <span>Totale</span><span style={{color:"#D96C05"}}>{fmt(cartLordo)}</span>
             </div>
             <button onClick={confirmSale} style={{width:"100%",background:"#D96C05",color:"white",border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>✅ Conferma Vendita</button>
-            <button onClick={()=>setCart([])} style={{width:"100%",marginTop:8,background:"transparent",color:"#A08060",border:"1px solid #3D2E1E",borderRadius:10,padding:"8px",fontSize:13,cursor:"pointer"}}>Svuota carrello</button>
+            <button onClick={()=>{setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""}); }} style={{width:"100%",marginTop:8,background:"transparent",color:"#A08060",border:"1px solid #3D2E1E",borderRadius:10,padding:"8px",fontSize:13,cursor:"pointer"}}>Svuota carrello</button>
           </>
         )}
       </div>
+
+      {/* RICEVUTA */}
+      {showReceipt&&lastSale&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}} onClick={()=>setShowReceipt(false)}>
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:16,padding:24,maxWidth:380,width:"90%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <div style={{fontSize:18,fontWeight:800,color:"#D96C05"}}>🐾 A Passo di Coda</div>
+              <div style={{fontSize:12,color:"#A08060"}}>Azzano Mella (Brescia)</div>
+              <div style={{fontSize:11,color:"#A08060",marginTop:4}}>{new Date(lastSale.date).toLocaleString("it-IT")}</div>
+            </div>
+            <div style={{borderTop:"1px dashed #3D2E1E",paddingTop:12,marginBottom:12}}>
+              {lastSale.items.map((item,i)=>(
+                <div key={i} style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                    <span>{item.name}</span><span style={{fontWeight:700}}>{fmt(item.finalPrice)}</span>
+                  </div>
+                  <div style={{fontSize:11,color:"#A08060"}}>{item.qty} × {fmt(item.unitPrice)} · IVA {item.iva}%{item.discount>0?" · Sconto: -"+fmt(item.discount):""}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{borderTop:"1px dashed #3D2E1E",paddingTop:10}}>
+              {lastSale.totalDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#E05252",marginBottom:4}}><span>Sconto totale</span><span>-{fmt(lastSale.totalDiscount)}</span></div>}
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#A08060",marginBottom:2}}><span>Imponibile</span><span>{fmt(lastSale.imponibile)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#A78BFA",marginBottom:6}}><span>IVA</span><span>{fmt(lastSale.iva)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:17,fontWeight:800}}><span>TOTALE</span><span style={{color:"#D96C05"}}>{fmt(lastSale.total)}</span></div>
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:16}}>
+              <button onClick={()=>window.print()} style={{flex:1,background:"#3D2E1E",color:"#F5EDE3",border:"none",borderRadius:8,padding:"10px",fontSize:13,cursor:"pointer"}}>🖨️ Stampa</button>
+              <button onClick={()=>setShowReceipt(false)} style={{flex:1,background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Chiudi</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── PRODOTTI ────────────────────────────────────────────────────────────────
 function Prodotti({products,setProducts}){
-  const empty={name:"",barcode:"",buyPrice:"",sellPrice:"",stock:"",minStock:"",category:"",iva:22};
+  const empty={name:"",barcode:"",buyPrice:"",sellPrice:"",stock:"",minStock:"",category:"",iva:22,expiryDate:""};
   const [form,setForm]=useState(empty);
   const [editId,setEditId]=useState(null);
   const [search,setSearch]=useState("");
   const [catFilter,setCatFilter]=useState("Tutte");
-
   const categories=["Tutte",...new Set(products.map(p=>p.category).filter(Boolean))];
 
-  // Auto-imposta IVA quando cambia la categoria
-  const handleCategoryChange = (cat) => {
-    setForm(f=>({...f, category:cat, iva:ivaForCategory(cat)}));
-  };
+  const handleCategoryChange=(cat)=>setForm(f=>({...f,category:cat,iva:ivaForCategory(cat)}));
 
   const handleSave=()=>{
     if(!form.name||!form.sellPrice)return;
@@ -328,7 +430,7 @@ function Prodotti({products,setProducts}){
     setForm(empty);
   };
 
-  const startEdit=(p)=>{setForm({...p,buyPrice:p.buyPrice.toString(),sellPrice:p.sellPrice.toString(),stock:p.stock.toString(),minStock:(p.minStock||0).toString(),iva:p.iva||22});setEditId(p.id);};
+  const startEdit=(p)=>{setForm({...p,buyPrice:p.buyPrice.toString(),sellPrice:p.sellPrice.toString(),stock:p.stock.toString(),minStock:(p.minStock||0).toString(),iva:p.iva||22,expiryDate:p.expiryDate||""});setEditId(p.id);};
 
   const filtered=products.filter(p=>{
     const matchCat=catFilter==="Tutte"||p.category===catFilter;
@@ -336,39 +438,23 @@ function Prodotti({products,setProducts}){
     return matchCat&&matchSearch;
   });
   const stockColor=(p)=>{if(p.stock===0)return"#E05252";if(p.stock<=(p.minStock||0))return"#E8C44A";return"#5CB85C";};
-
-  // Calcola prezzo netto per mostrare l'imponibile
-  const nettoVendita = (p) => p.sellPrice / (1 + (p.iva||22)/100);
+  const expiryColor=(p)=>{
+    if(!p.expiryDate)return null;
+    const d=daysToExpiry(p.expiryDate);
+    if(d<=0)return"#E05252";if(d<=7)return"#E05252";if(d<=14)return"#E8C44A";if(d<=30)return"#A78BFA";return"#5CB85C";
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
         <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>{editId?"✏️ Modifica Prodotto":"➕ Nuovo Prodotto"}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Nome *</label>
-            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Nome prodotto" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Codice a barre</label>
-            <input value={form.barcode} onChange={e=>setForm(f=>({...f,barcode:e.target.value}))} placeholder="(opzionale)" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Prezzo acquisto € (IVA incl.)</label>
-            <input type="number" step="0.01" value={form.buyPrice} onChange={e=>setForm(f=>({...f,buyPrice:e.target.value}))} placeholder="0.00" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Prezzo vendita € (IVA incl.) *</label>
-            <input type="number" step="0.01" value={form.sellPrice} onChange={e=>setForm(f=>({...f,sellPrice:e.target.value}))} placeholder="0.00" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Quantità stock</label>
-            <input type="number" value={form.stock} onChange={e=>setForm(f=>({...f,stock:e.target.value}))} placeholder="0" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Stock minimo allerta</label>
-            <input type="number" value={form.minStock} onChange={e=>setForm(f=>({...f,minStock:e.target.value}))} placeholder="0" style={iStyle}/>
-          </div>
+          {[["Nome *","name","text","Nome prodotto"],["Codice a barre","barcode","text","(opzionale)"],["Prezzo acquisto €","buyPrice","number","0.00"],["Prezzo vendita € *","sellPrice","number","0.00"],["Quantità stock","stock","number","0"],["Stock minimo allerta","minStock","number","0"],].map(([label,key,type,ph])=>(
+            <div key={key} style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:"#A08060"}}>{label}</label>
+              <input type={type} value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} placeholder={ph} step={type==="number"?"0.01":undefined} style={iStyle}/>
+            </div>
+          ))}
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             <label style={{fontSize:11,color:"#A08060"}}>Categoria</label>
             <input value={form.category} onChange={e=>handleCategoryChange(e.target.value)} placeholder="es. Cibo secco" style={iStyle}/>
@@ -377,9 +463,14 @@ function Prodotti({products,setProducts}){
             <label style={{fontSize:11,color:"#A08060"}}>Aliquota IVA</label>
             <select value={form.iva} onChange={e=>setForm(f=>({...f,iva:parseInt(e.target.value)}))} style={iStyle}>
               <option value={22}>22% (standard)</option>
-              <option value={10}>10% (BARF / alim. animali)</option>
+              <option value={10}>10% (BARF)</option>
               <option value={4}>4% (ridotta)</option>
             </select>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>📅 Scadenza più ravvicinata</label>
+            <input type="date" value={form.expiryDate} onChange={e=>setForm(f=>({...f,expiryDate:e.target.value}))} style={iStyle}/>
+            <span style={{fontSize:10,color:"#A08060"}}>Data del pezzo che scade prima</span>
           </div>
           <div style={{display:"flex",alignItems:"flex-end",gap:8}}>
             <button onClick={handleSave} style={{flex:1,background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px",fontSize:13,fontWeight:700,cursor:"pointer"}}>{editId?"Salva":"Aggiungi"}</button>
@@ -387,21 +478,13 @@ function Prodotti({products,setProducts}){
           </div>
         </div>
         {form.buyPrice&&form.sellPrice&&(()=>{
-          const sell=parseFloat(form.sellPrice)||0;
-          const buy=parseFloat(form.buyPrice)||0;
-          const iva=parseInt(form.iva)||22;
-          const sellNetto=sell/(1+iva/100);
-          const buyNetto=buy/(1+iva/100);
-          const margin=sellNetto-buyNetto;
-          const marginPct=sellNetto>0?(margin/sellNetto*100).toFixed(1):0;
-          return(
-            <div style={{marginTop:10,padding:"8px 12px",background:"#1A1410",borderRadius:8,fontSize:12,color:"#A08060",display:"flex",gap:20,flexWrap:"wrap"}}>
-              <span>Imponibile vendita: <strong style={{color:"#F5EDE3"}}>{fmt(sellNetto)}</strong></span>
-              <span>Imponibile acquisto: <strong style={{color:"#F5EDE3"}}>{fmt(buyNetto)}</strong></span>
-              <span>Margine netto: <strong style={{color:"#5CB85C"}}>{fmt(margin)} ({marginPct}%)</strong></span>
-              <span>IVA sul prezzo: <strong style={{color:"#A78BFA"}}>{fmt(sell-sellNetto)} ({iva}%)</strong></span>
-            </div>
-          );
+          const sell=parseFloat(form.sellPrice)||0,buy=parseFloat(form.buyPrice)||0,iva=parseInt(form.iva)||22;
+          const sn=sell/(1+iva/100),bn=buy/(1+iva/100),mg=sn-bn,mgp=sn>0?(mg/sn*100).toFixed(1):0;
+          return(<div style={{marginTop:10,padding:"8px 12px",background:"#1A1410",borderRadius:8,fontSize:12,color:"#A08060",display:"flex",gap:20,flexWrap:"wrap"}}>
+            <span>Imponibile vendita: <strong style={{color:"#F5EDE3"}}>{fmt(sn)}</strong></span>
+            <span>Margine netto: <strong style={{color:"#5CB85C"}}>{fmt(mg)} ({mgp}%)</strong></span>
+            <span>IVA: <strong style={{color:"#A78BFA"}}>{fmt(sell-sn)} ({iva}%)</strong></span>
+          </div>);
         })()}
       </div>
 
@@ -413,26 +496,29 @@ function Prodotti({products,setProducts}){
       <div style={{display:"flex",flexDirection:"column",gap:4}}>
         {filtered.length===0&&<div style={{color:"#A08060",textAlign:"center",padding:20,fontSize:13}}>Nessun prodotto trovato.</div>}
         {filtered.map(p=>{
-          const margin=((p.sellPrice/(1+(p.iva||22)/100))-(p.buyPrice/(1+(p.iva||22)/100)));
-          const marginPct=p.sellPrice>0?(margin/(p.sellPrice/(1+(p.iva||22)/100))*100).toFixed(0):0;
+          const sn=p.sellPrice/(1+(p.iva||22)/100),bn=p.buyPrice/(1+(p.iva||22)/100);
+          const mg=sn-bn,mgp=sn>0?(mg/sn*100).toFixed(0):0;
+          const ec=expiryColor(p);
+          const days=p.expiryDate?daysToExpiry(p.expiryDate):null;
           return(
-            <div key={p.id} style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
+            <div key={p.id} style={{background:"#231A12",border:"1px solid "+(ec&&days<=14?"#5A3A1A":"#3D2E1E"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
               <div style={{width:8,height:8,borderRadius:"50%",background:stockColor(p),flexShrink:0}}/>
               <div style={{flex:1}}>
                 <div style={{fontSize:13,fontWeight:600}}>{p.name}</div>
-                <div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"Nessun barcode"} · {p.category} · IVA {p.iva||22}%</div>
+                <div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"No barcode"} · {p.category} · IVA {p.iva||22}%</div>
+                {p.expiryDate&&<div style={{fontSize:11,color:ec,marginTop:2}}>📅 Scad: {new Date(p.expiryDate).toLocaleDateString("it-IT")} {days!==null&&("("+( days<=0?"SCADUTO":days+" gg")+")")}</div>}
               </div>
               <div style={{textAlign:"right",fontSize:12}}>
-                <div style={{color:"#D96C05",fontWeight:700}}>{fmt(p.sellPrice)} <span style={{color:"#A08060",fontSize:10}}>IVA incl.</span></div>
-                <div style={{color:"#A08060"}}>mg netto: {fmt(margin)} ({marginPct}%)</div>
+                <div style={{color:"#D96C05",fontWeight:700}}>{fmt(p.sellPrice)}</div>
+                <div style={{color:"#A08060"}}>mg: {fmt(mg)} ({mgp}%)</div>
               </div>
               <div style={{textAlign:"right",fontSize:12,minWidth:60}}>
                 <div style={{color:stockColor(p),fontWeight:700}}>{p.stock} pz</div>
                 <div style={{color:"#A08060"}}>min: {p.minStock||0}</div>
               </div>
               <div style={{display:"flex",gap:4}}>
-                <button onClick={()=>startEdit(p)} style={{background:"#3D2E1E",border:"none",color:"#D96C05",borderRadius:6,padding:"5px 8px",cursor:"pointer",fontSize:12}}>✏️</button>
-                <button onClick={()=>setProducts(prev=>prev.filter(x=>x.id!==p.id))} style={{background:"#3D2E1E",border:"none",color:"#E05252",borderRadius:6,padding:"5px 8px",cursor:"pointer",fontSize:12}}>🗑</button>
+                <button onClick={()=>startEdit(p)} style={{background:"#3D2E1E",border:"none",color:"#D96C05",borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>✏️</button>
+                <button onClick={()=>setProducts(prev=>prev.filter(x=>x.id!==p.id))} style={{background:"#3D2E1E",border:"none",color:"#E05252",borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>🗑</button>
               </div>
             </div>
           );
@@ -445,11 +531,7 @@ function Prodotti({products,setProducts}){
 // ─── SPESE ───────────────────────────────────────────────────────────────────
 function Spese({expenses,setExpenses}){
   const [form,setForm]=useState({month:thisMonth(),label:"",amount:""});
-  const handleAdd=()=>{
-    if(!form.label||!form.amount)return;
-    setExpenses(prev=>[...prev,{...form,amount:parseFloat(form.amount),id:uid()}]);
-    setForm(f=>({...f,label:"",amount:""}));
-  };
+  const handleAdd=()=>{if(!form.label||!form.amount)return;setExpenses(prev=>[...prev,{...form,amount:parseFloat(form.amount),id:uid()}]);setForm(f=>({...f,label:"",amount:""}));};
   const months=[...new Set([thisMonth(),...expenses.map(e=>e.month)])].sort().reverse();
   const [selMonth,setSelMonth]=useState(thisMonth());
   const monthExpenses=expenses.filter(e=>e.month===selMonth);
@@ -457,41 +539,21 @@ function Spese({expenses,setExpenses}){
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>➕ Aggiungi spesa mensile</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>➕ Aggiungi spesa</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10}}>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Mese</label>
-            <input type="month" value={form.month} onChange={e=>setForm(f=>({...f,month:e.target.value}))} style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Descrizione</label>
-            <input value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} placeholder="es. Affitto" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Importo €</label>
-            <input type="number" step="0.01" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",alignItems:"flex-end"}}>
-            <button onClick={handleAdd} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Aggiungi</button>
-          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Mese</label><input type="month" value={form.month} onChange={e=>setForm(f=>({...f,month:e.target.value}))} style={iStyle}/></div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Descrizione</label><input value={form.label} onChange={e=>setForm(f=>({...f,label:e.target.value}))} placeholder="es. Affitto" style={iStyle}/></div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Importo €</label><input type="number" step="0.01" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" style={iStyle}/></div>
+          <div style={{display:"flex",alignItems:"flex-end"}}><button onClick={handleAdd} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Aggiungi</button></div>
         </div>
       </div>
       <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-        <label style={{fontSize:12,color:"#A08060"}}>Mese visualizzato:</label>
         <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>{months.map(m=><option key={m}>{m}</option>)}</select>
         <span style={{marginLeft:"auto",fontWeight:700,color:"#E8C44A"}}>Totale: {fmt(total)}</span>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:4}}>
         {monthExpenses.length===0&&<div style={{color:"#A08060",textAlign:"center",padding:20,fontSize:13}}>Nessuna spesa per questo mese.</div>}
-        {monthExpenses.map(e=>(
-          <div key={e.id} style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13}}>{e.label}</span>
-            <div style={{display:"flex",gap:12,alignItems:"center"}}>
-              <span style={{fontWeight:700,color:"#E8C44A"}}>{fmt(e.amount)}</span>
-              <button onClick={()=>setExpenses(prev=>prev.filter(x=>x.id!==e.id))} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer",fontSize:13}}>🗑</button>
-            </div>
-          </div>
-        ))}
+        {monthExpenses.map(e=>(<div key={e.id} style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span style={{fontSize:13}}>{e.label}</span><div style={{display:"flex",gap:12,alignItems:"center"}}><span style={{fontWeight:700,color:"#E8C44A"}}>{fmt(e.amount)}</span><button onClick={()=>setExpenses(prev=>prev.filter(x=>x.id!==e.id))} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer"}}>🗑</button></div></div>))}
       </div>
     </div>
   );
@@ -506,69 +568,39 @@ function Ordini({products,getSalesByProduct,settings,setSettings}){
   const lastMonths=[0,1,2].map(i=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
   const salesMaps=lastMonths.map(m=>getSalesByProduct(m));
   const avgSales={};
-  products.forEach(p=>{
-    const totals=salesMaps.map(m=>m[p.id]?.qty||0);
-    const nonZero=totals.filter(x=>x>0);
-    avgSales[p.id]=nonZero.length>0?nonZero.reduce((a,b)=>a+b,0)/nonZero.length:0;
-  });
+  products.forEach(p=>{const totals=salesMaps.map(m=>m[p.id]?.qty||0);const nz=totals.filter(x=>x>0);avgSales[p.id]=nz.length>0?nz.reduce((a,b)=>a+b,0)/nz.length:0;});
   const h=parseInt(horizon);
-  const proposals=products.map(p=>{
-    const avg=avgSales[p.id];
-    const needed=Math.ceil(avg*h);
-    const toOrder=Math.max(0,needed-p.stock);
-    const cost=toOrder*p.buyPrice;
-    return{...p,avg:avg.toFixed(1),needed,toOrder,cost};
-  }).filter(p=>p.toOrder>0).sort((a,b)=>b.cost-a.cost);
+  const proposals=products.map(p=>{const avg=avgSales[p.id];const needed=Math.ceil(avg*h);const toOrder=Math.max(0,needed-p.stock);return{...p,avg:avg.toFixed(1),needed,toOrder,cost:toOrder*p.buyPrice};}).filter(p=>p.toOrder>0).sort((a,b)=>b.cost-a.cost);
   const totalCost=proposals.reduce((a,p)=>a+p.cost,0);
   const budgetLeft=settings.budget-totalCost;
-  let cumulative=0;
-  const prioritized=proposals.map(p=>{const fits=cumulative+p.cost<=settings.budget;if(fits)cumulative+=p.cost;return{...p,fits};});
+  let cum=0;
+  const prioritized=proposals.map(p=>{const fits=cum+p.cost<=settings.budget;if(fits)cum+=p.cost;return{...p,fits};});
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16,display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-end"}}>
         <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>⚙️ Parametri ordine</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>⚙️ Parametri</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              <label style={{fontSize:11,color:"#A08060"}}>Orizzonte temporale</label>
-              <select value={horizon} onChange={e=>setHorizon(e.target.value)} style={{...iStyle,minWidth:180}}>
-                <option value="1">Copertura 1 mese</option>
-                <option value="2">Copertura 2 mesi</option>
-              </select>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}>
-              <label style={{fontSize:11,color:"#A08060"}}>Budget disponibile €</label>
-              <div style={{display:"flex",gap:6}}>
-                <input type="number" value={budget} onChange={e=>setBudget(e.target.value)} style={{...iStyle,width:120}}/>
-                <button onClick={saveBudget} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer"}}>Salva</button>
-              </div>
-            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Orizzonte</label><select value={horizon} onChange={e=>setHorizon(e.target.value)} style={{...iStyle,minWidth:180}}><option value="1">Copertura 1 mese</option><option value="2">Copertura 2 mesi</option></select></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Budget €</label><div style={{display:"flex",gap:6}}><input type="number" value={budget} onChange={e=>setBudget(e.target.value)} style={{...iStyle,width:120}}/><button onClick={saveBudget} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer"}}>Salva</button></div></div>
           </div>
         </div>
         <div style={{display:"flex",gap:24}}>
-          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Totale da ordinare</div><div style={{fontSize:20,fontWeight:800,color:"#D96C05"}}>{fmt(totalCost)}</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Budget rimanente</div><div style={{fontSize:20,fontWeight:800,color:budgetLeft>=0?"#5CB85C":"#E05252"}}>{fmt(budgetLeft)}</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Totale ordine</div><div style={{fontSize:20,fontWeight:800,color:"#D96C05"}}>{fmt(totalCost)}</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Budget rimasto</div><div style={{fontSize:20,fontWeight:800,color:budgetLeft>=0?"#5CB85C":"#E05252"}}>{fmt(budgetLeft)}</div></div>
         </div>
       </div>
-      {proposals.length===0?(
-        <div style={{color:"#A08060",textAlign:"center",padding:30,fontSize:14}}>Nessun riordino necessario o dati vendita insufficienti.<br/>Registra alcune vendite per generare proposte.</div>
-      ):(
-        <>
-          <div style={{fontSize:12,color:"#A08060"}}>I prezzi di acquisto sono IVA inclusa. Le righe verdi rientrano nel budget.</div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            {prioritized.map(p=>(
-              <div key={p.id} style={{background:p.fits?"#1E2E1E":"#231A12",border:"1px solid "+(p.fits?"#2E5E2E":"#3D2E1E"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{p.name}</div>
-                  <div style={{fontSize:11,color:"#A08060"}}>{p.category} · IVA {p.iva||22}% · Ven. media: {p.avg}/mese · Stock: {p.stock}</div>
-                </div>
-                <div style={{textAlign:"right",minWidth:90}}><div style={{fontSize:13,fontWeight:700}}>Ordina: {p.toOrder} pz</div><div style={{fontSize:11,color:"#A08060"}}>Copre {h} mese/i</div></div>
-                <div style={{textAlign:"right",minWidth:80}}><div style={{fontSize:13,fontWeight:700,color:"#E8C44A"}}>{fmt(p.cost)}</div><div style={{fontSize:11,color:"#A08060"}}>{fmt(p.buyPrice)}/pz</div></div>
-                <div style={{fontSize:12,fontWeight:700,color:p.fits?"#5CB85C":"#E05252",minWidth:60,textAlign:"right"}}>{p.fits?"✅ Ok":"⛔ Budget"}</div>
-              </div>
-            ))}
-          </div>
-        </>
+      {proposals.length===0?<div style={{color:"#A08060",textAlign:"center",padding:30,fontSize:14}}>Nessun riordino necessario o dati insufficienti.</div>:(
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {prioritized.map(p=>(
+            <div key={p.id} style={{background:p.fits?"#1E2E1E":"#231A12",border:"1px solid "+(p.fits?"#2E5E2E":"#3D2E1E"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{p.name}</div><div style={{fontSize:11,color:"#A08060"}}>{p.category} · media: {p.avg}/mese · stock: {p.stock}</div></div>
+              <div style={{textAlign:"right",minWidth:90}}><div style={{fontSize:13,fontWeight:700}}>Ordina: {p.toOrder} pz</div></div>
+              <div style={{textAlign:"right",minWidth:80}}><div style={{fontSize:13,fontWeight:700,color:"#E8C44A"}}>{fmt(p.cost)}</div></div>
+              <div style={{fontSize:12,fontWeight:700,color:p.fits?"#5CB85C":"#E05252",minWidth:60,textAlign:"right"}}>{p.fits?"✅ Ok":"⛔ Budget"}</div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -581,125 +613,149 @@ function Report({products,sales,expenses,getSalesByProduct}){
   const salesMap=getSalesByProduct(selMonth);
   const monthSales=sales.filter(s=>s.date.startsWith(selMonth));
   const monthExpenses=expenses.filter(e=>e.month===selMonth);
-
-  // Calcoli con IVA scorporata
-  let totalLordo=0,totalImponibile=0,totalIva22=0,totalIva10=0,totalCostGoods=0;
+  let totalLordo=0,totalImponibile=0,totalIva22=0,totalIva10=0,totalCostGoods=0,totalSconti=0;
   monthSales.forEach(s=>{
-    const lordo=s.qty*s.sellPrice;
+    const lordo=s.finalPrice||s.qty*s.sellPrice;
     const {imponibile,iva}=scorporaIva(lordo,s.iva||22);
-    totalLordo+=lordo;
-    totalImponibile+=imponibile;
-    if((s.iva||22)===10) totalIva10+=iva; else totalIva22+=iva;
+    totalLordo+=lordo;totalImponibile+=imponibile;
+    if((s.iva||22)===10)totalIva10+=iva;else totalIva22+=iva;
     totalCostGoods+=s.qty*s.buyPrice;
+    totalSconti+=(s.discountAmount||0);
   });
   const totalIva=totalIva22+totalIva10;
   const grossMargin=totalImponibile-totalCostGoods;
   const totalExpenses=monthExpenses.reduce((a,e)=>a+e.amount,0);
   const netResult=grossMargin-totalExpenses;
   const marginPct=totalImponibile>0?(grossMargin/totalImponibile*100).toFixed(1):0;
-
   const productBreakdown=Object.entries(salesMap).map(([id,d])=>({product:products.find(p=>p.id===id),...d})).filter(x=>x.product).sort((a,b)=>b.revenue-a.revenue);
   const stockValue=products.reduce((a,p)=>a+p.stock*p.buyPrice,0);
   const stockRetailValue=products.reduce((a,p)=>a+p.stock*p.sellPrice,0);
-
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:10,alignItems:"center"}}>
         <label style={{fontSize:12,color:"#A08060"}}>Mese:</label>
         <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>{months.map(m=><option key={m}>{m}</option>)}</select>
       </div>
-
-      {/* Conto economico */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
         <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>📊 Conto Economico — {selMonth}</div>
         {[
           {label:"Incassato (IVA inclusa)",value:fmt(totalLordo),color:"#D96C05"},
-          {label:"IVA collettata (da versare)",value:"- "+fmt(totalIva),color:"#A78BFA"},
+          {label:"IVA collettata",value:"- "+fmt(totalIva),color:"#A78BFA"},
           {label:"Fatturato netto (imponibile)",value:fmt(totalImponibile),color:"#F28C35",bold:true},
-          {label:"Costo del venduto (acquisti)",value:"- "+fmt(totalCostGoods),color:"#E05252"},
+          {label:"Costo del venduto",value:"- "+fmt(totalCostGoods),color:"#E05252"},
+          ...(totalSconti>0?[{label:"Sconti applicati",value:fmt(totalSconti),color:"#E05252"}]:[]),
           {label:"Margine lordo",value:fmt(grossMargin)+" ("+marginPct+"%)",color:grossMargin>=0?"#5CB85C":"#E05252",bold:true},
           {label:"Spese fisse",value:"- "+fmt(totalExpenses),color:"#E8C44A"},
           {label:"Risultato netto",value:fmt(netResult),color:netResult>=0?"#5CB85C":"#E05252",bold:true,big:true},
-        ].map((row,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<6?"1px solid #3D2E1E":"none"}}>
+        ].map((row,i,arr)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<arr.length-1?"1px solid #3D2E1E":"none"}}>
             <span style={{fontSize:row.big?15:13,fontWeight:row.bold?700:400}}>{row.label}</span>
             <span style={{fontSize:row.big?16:13,fontWeight:row.bold?800:600,color:row.color}}>{row.value}</span>
           </div>
         ))}
       </div>
-
-      {/* Riepilogo IVA */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:14,fontWeight:700,color:"#A78BFA",marginBottom:10}}>🏛️ Riepilogo IVA — {selMonth}</div>
-        <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-          {totalIva22>0&&<div style={{flex:1,minWidth:140,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{fontSize:11,color:"#A08060"}}>IVA 22% (standard)</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva22)}</div>
-          </div>}
-          {totalIva10>0&&<div style={{flex:1,minWidth:140,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{fontSize:11,color:"#A08060"}}>IVA 10% (BARF)</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva10)}</div>
-          </div>}
-          <div style={{flex:1,minWidth:140,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Totale IVA da versare</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva)}</div>
-          </div>
+        <div style={{fontSize:14,fontWeight:700,color:"#A78BFA",marginBottom:10}}>🏛️ Riepilogo IVA</div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          {totalIva22>0&&<div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>IVA 22%</div><div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva22)}</div></div>}
+          {totalIva10>0&&<div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>IVA 10% (BARF)</div><div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva10)}</div></div>}
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Totale da versare</div><div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva)}</div></div>
         </div>
-        <div style={{marginTop:8,fontSize:11,color:"#A08060"}}>⚠️ Questi sono i dati sulle vendite registrate. Confronta con i tuoi acquisti per la liquidazione IVA effettiva.</div>
       </div>
-
-      {/* Spese */}
-      {monthExpenses.length>0&&(
-        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-          <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>💳 Dettaglio Spese</div>
-          {monthExpenses.map(e=>(
-            <div key={e.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-              <span>{e.label}</span><span style={{color:"#E8C44A",fontWeight:600}}>{fmt(e.amount)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Vendite per prodotto */}
       {productBreakdown.length>0&&(
         <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
           <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>🏷️ Vendite per Prodotto</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6}}>
-            <span>Prodotto</span><span style={{textAlign:"right"}}>Qtà</span><span style={{textAlign:"right"}}>IVA</span><span style={{textAlign:"right"}}>Ricavo netto</span><span style={{textAlign:"right"}}>Margine</span>
-          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6}}><span>Prodotto</span><span style={{textAlign:"right"}}>Qtà</span><span style={{textAlign:"right"}}>IVA</span><span style={{textAlign:"right"}}>Ricavo netto</span><span style={{textAlign:"right"}}>Margine</span></div>
           {productBreakdown.map(({product,qty,revenue:rev,cost})=>{
-            const iva=product.iva||22;
-            const revNetto=rev/(1+iva/100);
-            const costNetto=cost/(1+iva/100);
-            return(
-              <div key={product.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
-                <span>{product.name}</span>
-                <span style={{textAlign:"right",color:"#A08060"}}>{qty}</span>
-                <span style={{textAlign:"right",color:"#A78BFA"}}>{iva}%</span>
-                <span style={{textAlign:"right",color:"#D96C05",fontWeight:600}}>{fmt(revNetto)}</span>
-                <span style={{textAlign:"right",color:"#5CB85C",fontWeight:600}}>{fmt(revNetto-costNetto)}</span>
-              </div>
-            );
+            const iva=product.iva||22;const rn=rev/(1+iva/100);const cn=cost/(1+iva/100);
+            return(<div key={product.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}><span>{product.name}</span><span style={{textAlign:"right",color:"#A08060"}}>{qty}</span><span style={{textAlign:"right",color:"#A78BFA"}}>{iva}%</span><span style={{textAlign:"right",color:"#D96C05",fontWeight:600}}>{fmt(rn)}</span><span style={{textAlign:"right",color:"#5CB85C",fontWeight:600}}>{fmt(rn-cn)}</span></div>);
           })}
         </div>
       )}
-
-      {/* Valore magazzino */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>📦 Valore Magazzino (attuale)</div>
-        <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:130,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Costo acquisto</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#E8C44A"}}>{fmt(stockValue)}</div>
-          </div>
-          <div style={{flex:1,minWidth:130,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Valore vendita (IVA incl.)</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#D96C05"}}>{fmt(stockRetailValue)}</div>
-          </div>
-          <div style={{flex:1,minWidth:130,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Margine potenziale netto</div>
-            <div style={{fontSize:18,fontWeight:800,color:"#5CB85C"}}>{fmt(stockRetailValue-stockValue)}</div>
-          </div>
+        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>📦 Valore Magazzino</div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Costo acquisto</div><div style={{fontSize:18,fontWeight:800,color:"#E8C44A"}}>{fmt(stockValue)}</div></div>
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Valore vendita</div><div style={{fontSize:18,fontWeight:800,color:"#D96C05"}}>{fmt(stockRetailValue)}</div></div>
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Margine potenziale</div><div style={{fontSize:18,fontWeight:800,color:"#5CB85C"}}>{fmt(stockRetailValue-stockValue)}</div></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BACKUP / RIPRISTINO ─────────────────────────────────────────────────────
+function Backup({products,sales,expenses,settings,setProducts,setSales,setExpenses,setSettings}){
+  const [restoreMsg,setRestoreMsg]=useState(null);
+  const fileRef=useRef(null);
+
+  const doExport=()=>{
+    const data={version:2,exportDate:nowISO(),products,sales,expenses,settings};
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download="backup-apassodicoda-"+new Date().toISOString().slice(0,10)+".json";
+    a.click();URL.revokeObjectURL(url);
+  };
+
+  const doImport=(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(!data.products||!data.sales)throw new Error("File non valido");
+        setProducts(data.products||[]);
+        setSales(data.sales||[]);
+        setExpenses(data.expenses||[]);
+        setSettings(data.settings||{budget:2000});
+        setRestoreMsg({text:"✅ Dati ripristinati con successo! ("+data.products.length+" prodotti, "+data.sales.length+" vendite)",type:"ok"});
+      }catch(err){setRestoreMsg({text:"❌ Errore: file non valido o corrotto.",type:"err"});}
+    };
+    reader.readAsText(file);
+    e.target.value="";
+  };
+
+  // Statistiche backup
+  const lastSaleDate=sales.length>0?new Date([...sales].sort((a,b)=>b.date.localeCompare(a.date))[0].date).toLocaleDateString("it-IT"):"—";
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:4}}>💾 Backup & Ripristino Dati</div>
+        <div style={{fontSize:12,color:"#A08060",marginBottom:16}}>Esporta tutti i dati in un file JSON da conservare. Potrai reimportarlo su qualsiasi PC o dopo aver pulito la cache.</div>
+
+        {/* Riepilogo dati */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:16}}>
+          {[["📦 Prodotti",products.length+" articoli"],["🛒 Vendite",sales.length+" registrazioni"],["💳 Spese",expenses.length+" voci"],["📅 Ultima vendita",lastSaleDate]].map(([label,val])=>(
+            <div key={label} style={{background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+              <div style={{fontSize:11,color:"#A08060"}}>{label}</div>
+              <div style={{fontSize:15,fontWeight:700}}>{val}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          <button onClick={doExport} style={{flex:1,minWidth:200,background:"#D96C05",color:"white",border:"none",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+            📥 Esporta Backup
+          </button>
+          <button onClick={()=>fileRef.current?.click()} style={{flex:1,minWidth:200,background:"#2E2218",color:"#F5EDE3",border:"1px solid #3D2E1E",borderRadius:10,padding:"14px",fontSize:15,fontWeight:700,cursor:"pointer"}}>
+            📤 Importa / Ripristina
+          </button>
+          <input ref={fileRef} type="file" accept=".json" onChange={doImport} style={{display:"none"}}/>
+        </div>
+
+        {restoreMsg&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:8,background:restoreMsg.type==="ok"?"#1E3A1E":"#3A1E1E",color:restoreMsg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{restoreMsg.text}</div>}
+      </div>
+
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#E8C44A",marginBottom:8}}>⚠️ Quando fare il backup</div>
+        <div style={{fontSize:13,color:"#A08060",lineHeight:1.7}}>
+          • <strong style={{color:"#F5EDE3"}}>Ogni settimana</strong> come routine<br/>
+          • Prima di aggiornare il gestionale con una nuova versione<br/>
+          • Prima di pulire la cache del browser<br/>
+          • Quando cambi PC o dispositivo<br/>
+          • Salva il file JSON in una cartella su Google Drive o simile per averlo sempre disponibile
         </div>
       </div>
     </div>
@@ -709,18 +765,18 @@ function Report({products,sales,expenses,getSalesByProduct}){
 // ─── APP ROOT ────────────────────────────────────────────────────────────────
 function App(){
   const [tab,setTab]=useState("dashboard");
-  const [products,setProducts]=useState(()=>load(KEYS.products)||SAMPLE_PRODUCTS);
+  const [products,setProducts]=useState(()=>load(KEYS.products)||SAMPLE_PRODUCTS||[]);
   const [sales,setSales]=useState(()=>load(KEYS.sales)||[]);
-  const [expenses,setExpenses]=useState(()=>load(KEYS.expenses)||SAMPLE_EXPENSES);
+  const [expenses,setExpenses]=useState(()=>load(KEYS.expenses)||SAMPLE_EXPENSES||[]);
   const [settings,setSettings]=useState(()=>load(KEYS.settings)||{budget:2000});
   useEffect(()=>save(KEYS.products,products),[products]);
   useEffect(()=>save(KEYS.sales,sales),[sales]);
   useEffect(()=>save(KEYS.expenses,expenses),[expenses]);
   useEffect(()=>save(KEYS.settings,settings),[settings]);
+
   const getSalesThisMonth=useCallback(()=>{const m=thisMonth();return sales.filter(s=>s.date.startsWith(m));},[sales]);
   const getSalesByProduct=useCallback((monthStr)=>{
-    const m=monthStr||thisMonth();
-    const map={};
+    const m=monthStr||thisMonth();const map={};
     sales.filter(s=>s.date.startsWith(m)).forEach(s=>{
       if(!map[s.productId])map[s.productId]={qty:0,revenue:0,cost:0};
       map[s.productId].qty+=s.qty;
@@ -729,6 +785,10 @@ function App(){
     });
     return map;
   },[sales]);
+
+  // Alert scadenze per badge nav
+  const expiryCount=products.filter(p=>p.expiryDate&&daysToExpiry(p.expiryDate)<=30).length;
+
   const tabs=[
     {id:"dashboard",label:"Dashboard",icon:"🏠"},
     {id:"cassa",label:"Cassa / Vendite",icon:"🛒"},
@@ -736,7 +796,9 @@ function App(){
     {id:"spese",label:"Spese",icon:"💳"},
     {id:"ordini",label:"Proposta Ordini",icon:"📋"},
     {id:"report",label:"Report",icon:"📊"},
+    {id:"backup",label:"Backup",icon:"💾"},
   ];
+
   return (
     <div>
       <div style={{background:"#231A12",borderBottom:"1px solid #3D2E1E",padding:"12px 20px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50}}>
@@ -745,27 +807,43 @@ function App(){
           <div style={{fontWeight:700,fontSize:15}}>A Passo di Coda</div>
           <div style={{fontSize:11,color:"#A08060"}}>Gestionale negozio</div>
         </div>
+        {expiryCount>0&&<div style={{marginLeft:8,background:"#A78BFA",color:"white",borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:700}}>📅 {expiryCount} in scadenza</div>}
         <div style={{marginLeft:"auto",fontSize:12,color:"#A08060"}}>{new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}</div>
       </div>
       <div style={{background:"#231A12",borderBottom:"1px solid #3D2E1E",overflowX:"auto",display:"flex"}}>
         {tabs.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{padding:"10px 16px",fontSize:13,fontWeight:tab===t.id?700:500,color:tab===t.id?"#D96C05":"#A08060",background:"none",border:"none",cursor:"pointer",borderBottom:tab===t.id?"2px solid #D96C05":"2px solid transparent",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,transition:"all 0.15s"}}>
+            style={{padding:"10px 16px",fontSize:13,fontWeight:tab===t.id?700:500,color:tab===t.id?"#D96C05":"#A08060",background:"none",border:"none",cursor:"pointer",borderBottom:tab===t.id?"2px solid #D96C05":"2px solid transparent",whiteSpace:"nowrap",transition:"all 0.15s"}}>
             {t.icon} {t.label}
           </button>
         ))}
       </div>
-      <div style={{padding:"16px",maxWidth:1100,margin:"0 auto"}}>
+      <div style={{padding:"16px",maxWidth:1200,margin:"0 auto"}}>
         {tab==="dashboard"&&<Dashboard products={products} sales={sales} expenses={expenses} getSalesThisMonth={getSalesThisMonth} getSalesByProduct={getSalesByProduct}/>}
         {tab==="cassa"&&<Cassa products={products} setProducts={setProducts} sales={sales} setSales={setSales}/>}
         {tab==="prodotti"&&<Prodotti products={products} setProducts={setProducts}/>}
         {tab==="spese"&&<Spese expenses={expenses} setExpenses={setExpenses}/>}
         {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings}/>}
         {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct}/>}
+        {tab==="backup"&&<Backup products={products} sales={sales} expenses={expenses} settings={settings} setProducts={setProducts} setSales={setSales} setExpenses={setExpenses} setSettings={setSettings}/>}
       </div>
     </div>
   );
 }
+
+const SAMPLE_PRODUCTS=[
+  {id:"1",name:"Crocchette Premium Pollo 3kg",barcode:"8001234567890",buyPrice:12.50,sellPrice:22.90,stock:15,minStock:5,category:"Cibo secco",iva:22,expiryDate:""},
+  {id:"2",name:"Cibo umido Vitello 400g",barcode:"8009876543210",buyPrice:1.80,sellPrice:3.50,stock:40,minStock:12,category:"Cibo umido",iva:22,expiryDate:""},
+  {id:"3",name:"Snack naturale manzo",barcode:"8005551234567",buyPrice:4.20,sellPrice:8.90,stock:22,minStock:8,category:"Snack",iva:22,expiryDate:""},
+  {id:"4",name:"Barf Manzo 500g (Italia Pet Food)",barcode:"",buyPrice:3.10,sellPrice:6.50,stock:18,minStock:6,category:"BARF",iva:10,expiryDate:"2026-07-15"},
+  {id:"5",name:"Pettorina comfort taglia M",barcode:"8007778889990",buyPrice:11.00,sellPrice:24.90,stock:8,minStock:3,category:"Accessori",iva:22,expiryDate:""},
+];
+const SAMPLE_EXPENSES=[
+  {id:"e1",month:"2026-05",label:"Affitto",amount:850},
+  {id:"e2",month:"2026-05",label:"Utenze",amount:180},
+  {id:"e3",month:"2026-06",label:"Affitto",amount:850},
+  {id:"e4",month:"2026-06",label:"Utenze",amount:160},
+];
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
