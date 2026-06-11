@@ -488,10 +488,53 @@ function Prodotti({products,setProducts}){
         })()}
       </div>
 
-      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cerca prodotto..." style={{...iStyle,flex:1,minWidth:160}}/>
         <select value={catFilter} onChange={e=>setCatFilter(e.target.value)} style={{...iStyle,minWidth:140}}>{categories.map(c=><option key={c}>{c}</option>)}</select>
+        <button onClick={()=>{
+          const rows=filtered.map(p=>{
+            const iva=p.iva||22;
+            const sellNetto=p.sellPrice/(1+iva/100);
+            const buyNetto=p.buyPrice/(1+iva/100);
+            return{...p,sellNetto,buyNetto,valAcqNetto:buyNetto*p.stock,valAcqLordo:p.buyPrice*p.stock,valVendNetto:sellNetto*p.stock,valVendLordo:p.sellPrice*p.stock,margineNetto:sellNetto-buyNetto};
+          });
+          const totAcqNetto=rows.reduce((a,r)=>a+r.valAcqNetto,0);
+          const totAcqLordo=rows.reduce((a,r)=>a+r.valAcqLordo,0);
+          const totVendNetto=rows.reduce((a,r)=>a+r.valVendNetto,0);
+          const totVendLordo=rows.reduce((a,r)=>a+r.valVendLordo,0);
+          const n=(v)=>v.toFixed(2).replace(".",",");
+          const sep=";";
+          const hdr=["Codice","Nome","Categoria","IVA %","Qty Stock","Stock Min","P.Acq IVA incl.","P.Acq imponibile","P.Vend IVA incl.","P.Vend imponibile","Margine netto","Margine %","Val.Acq impon.","Val.Acq IVA incl.","Val.Vend impon.","Val.Vend IVA incl.","Scadenza"].join(sep);
+          const dRows=rows.map(r=>[r.barcode||"",'"'+r.name.replace(/"/g,""+'"'+'"')+'"',r.category||"",r.iva||22,r.stock,r.minStock||0,n(r.buyPrice),n(r.buyNetto),n(r.sellPrice),n(r.sellNetto),n(r.margineNetto),r.sellNetto>0?(r.margineNetto/r.sellNetto*100).toFixed(1)+"%":"0%",n(r.valAcqNetto),n(r.valAcqLordo),n(r.valVendNetto),n(r.valVendLordo),r.expiryDate?new Date(r.expiryDate).toLocaleDateString("it-IT"):""].join(sep));
+          const tot=["","TOTALE","","","","","","","","","","",n(totAcqNetto),n(totAcqLordo),n(totVendNetto),n(totVendLordo),""].join(sep);
+          const csv="\uFEFF"+[hdr,...dRows,"",tot].join("\n");
+          const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+          const url=URL.createObjectURL(blob);
+          const a=document.createElement("a");
+          a.href=url;a.download="inventario-apassodicoda-"+new Date().toISOString().slice(0,10)+".csv";
+          a.click();URL.revokeObjectURL(url);
+        }} style={{background:"#5CB85C",color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+          📊 Esporta Inventario CSV
+        </button>
       </div>
+
+      {(()=>{
+        const rows=filtered.map(p=>{const iva=p.iva||22;return{valAcqNetto:(p.buyPrice/(1+iva/100))*p.stock,valAcqLordo:p.buyPrice*p.stock,valVendNetto:(p.sellPrice/(1+iva/100))*p.stock,valVendLordo:p.sellPrice*p.stock};});
+        const tAN=rows.reduce((a,r)=>a+r.valAcqNetto,0),tAL=rows.reduce((a,r)=>a+r.valAcqLordo,0),tVN=rows.reduce((a,r)=>a+r.valVendNetto,0),tVL=rows.reduce((a,r)=>a+r.valVendLordo,0);
+        return(
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"12px 16px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#A08060",marginBottom:8}}>📦 Riepilogo inventario — {filtered.length} referenze {catFilter!=="Tutte"?"("+catFilter+")":""}</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+              {[["Valore acquisto (impon.)",fmt(tAN),"#E8C44A"],["Valore acquisto (IVA incl.)",fmt(tAL),"#E8C44A"],["Valore vendita (impon.)",fmt(tVN),"#D96C05"],["Valore vendita (IVA incl.)",fmt(tVL),"#F28C35"],["Margine potenziale netto",fmt(tVN-tAN),"#5CB85C"]].map(([label,value,color])=>(
+                <div key={label} style={{background:"#1A1410",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontSize:10,color:"#A08060"}}>{label}</div>
+                  <div style={{fontSize:15,fontWeight:800,color}}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       <div style={{display:"flex",flexDirection:"column",gap:4}}>
         {filtered.length===0&&<div style={{color:"#A08060",textAlign:"center",padding:20,fontSize:13}}>Nessun prodotto trovato.</div>}
@@ -762,6 +805,515 @@ function Backup({products,sales,expenses,settings,setProducts,setSales,setExpens
   );
 }
 
+// ─── FEDELTÀ ─────────────────────────────────────────────────────────────────
+const REWARDS=[
+  {points:100,label:"Sconto €2",value:2,type:"discount"},
+  {points:200,label:"Sconto €5",value:5,type:"discount"},
+  {points:300,label:"Sconto €10",value:10,type:"discount"},
+  {points:500,label:"Prodotto omaggio fino a €8",value:8,type:"gift"},
+  {points:1000,label:"Sconto €30 o prodotto omaggio premium",value:30,type:"premium"},
+];
+const VIP_THRESHOLD=500;
+const INACTIVITY_MONTHS=12;
+
+const isVip=(customer)=>(customer.totalPointsEarned||0)>=VIP_THRESHOLD;
+const pointsRate=(customer)=>isVip(customer)?1.5:1;
+const isInactive=(customer)=>{
+  if(!customer.lastActivity)return false;
+  const months=(new Date()-new Date(customer.lastActivity))/(1000*60*60*24*30);
+  return months>=INACTIVITY_MONTHS;
+};
+const activePoints=(customer)=>isInactive(customer)?0:(customer.points||0);
+const nextReward=(pts)=>REWARDS.find(r=>r.points>pts)||null;
+
+function Fedelta({customers,setCustomers,sales}){
+  const [subTab,setSubTab]=useState("lista");
+  const [search,setSearch]=useState("");
+  const [selCustomer,setSelCustomer]=useState(null);
+  const [form,setForm]=useState({firstName:"",lastName:"",phone:""});
+  const [redeemMsg,setRedeemMsg]=useState(null);
+  const [addForm,setAddForm]=useState(false);
+
+  const showMsg=(text,type="ok")=>{setRedeemMsg({text,type});setTimeout(()=>setRedeemMsg(null),3000);};
+
+  const handleAddCustomer=()=>{
+    if(!form.firstName||!form.lastName)return;
+    const c={id:uid(),firstName:form.firstName,lastName:form.lastName,phone:form.phone,points:0,totalPointsEarned:0,joinDate:nowISO(),lastActivity:null,history:[]};
+    setCustomers(prev=>[...prev,c]);
+    setForm({firstName:"",lastName:"",phone:""});
+    setAddForm(false);
+    showMsg("✅ Cliente "+form.firstName+" "+form.lastName+" registrato!");
+  };
+
+  const handleRedeem=(customer,reward)=>{
+    const pts=activePoints(customer);
+    if(pts<reward.points){showMsg("Punti insufficienti","err");return;}
+    const updated={...customer,points:(customer.points||0)-reward.points,lastActivity:nowISO(),
+      history:[...( customer.history||[]),{type:"redeem",date:nowISO(),desc:"Riscattato: "+reward.label,points:-reward.points}]};
+    setCustomers(prev=>prev.map(c=>c.id===customer.id?updated:c));
+    setSelCustomer(updated);
+    showMsg("✅ Premio riscattato: "+reward.label);
+  };
+
+  const handleAddPoints=(customer,amount)=>{
+    const rate=pointsRate(customer);
+    const earned=Math.floor(amount*rate);
+    if(earned<=0)return;
+    const updated={...customer,
+      points:(customer.points||0)+earned,
+      totalPointsEarned:(customer.totalPointsEarned||0)+earned,
+      lastActivity:nowISO(),
+      history:[...(customer.history||[]),{type:"earn",date:nowISO(),desc:"Punti aggiunti manualmente ("+fmt(amount)+")",points:earned}]
+    };
+    setCustomers(prev=>prev.map(c=>c.id===customer.id?updated:c));
+    setSelCustomer(updated);
+    showMsg("✅ Aggiunti "+earned+" punti a "+customer.firstName);
+  };
+
+  const filtered=customers.filter(c=>{
+    const name=(c.firstName+" "+c.lastName).toLowerCase();
+    return name.includes(search.toLowerCase())||c.phone?.includes(search);
+  }).sort((a,b)=>(b.points||0)-(a.points||0));
+
+  const vipCount=customers.filter(c=>isVip(c)).length;
+  const totalPoints=customers.reduce((a,c)=>a+(c.points||0),0);
+  const inactiveCount=customers.filter(c=>isInactive(c)&&(c.points||0)>0).length;
+
+  // Dettaglio cliente selezionato
+  if(selCustomer){
+    const c=selCustomer;
+    const pts=activePoints(c);
+    const vip=isVip(c);
+    const inactive=isInactive(c);
+    const next=nextReward(pts);
+    const progress=next?Math.min(100,(pts/next.points)*100):100;
+    const [manualAmt,setManualAmt]=useState("");
+    // Vendite collegate
+    const customerSales=sales.filter(s=>s.customerId===c.id).reverse().slice(0,10);
+
+    return(
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setSelCustomer(null)} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:13}}>← Indietro</button>
+          <div style={{fontSize:16,fontWeight:800}}>{c.firstName} {c.lastName}</div>
+          {vip&&<span style={{background:"#D96C05",color:"white",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⭐ VIP</span>}
+          {inactive&&<span style={{background:"#3D2E1E",color:"#E05252",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⚠️ Inattivo</span>}
+        </div>
+
+        {redeemMsg&&<div style={{padding:"8px 14px",borderRadius:8,background:redeemMsg.type==="ok"?"#1E3A1E":"#3A1E1E",color:redeemMsg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{redeemMsg.text}</div>}
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Punti disponibili</div>
+            <div style={{fontSize:28,fontWeight:900,color:inactive?"#A08060":"#D96C05"}}>{inactive?"0*":pts}</div>
+            {inactive&&<div style={{fontSize:10,color:"#E05252"}}>*azzerati per inattività</div>}
+          </div>
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Punti totali guadagnati</div>
+            <div style={{fontSize:28,fontWeight:900,color:"#F28C35"}}>{c.totalPointsEarned||0}</div>
+          </div>
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Moltiplicatore</div>
+            <div style={{fontSize:28,fontWeight:900,color:vip?"#D96C05":"#F5EDE3"}}>×{pointsRate(c).toFixed(1)}</div>
+            <div style={{fontSize:10,color:"#A08060"}}>{vip?"Cliente VIP":"Standard"}</div>
+          </div>
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Iscritto dal</div>
+            <div style={{fontSize:14,fontWeight:700,marginTop:4}}>{new Date(c.joinDate).toLocaleDateString("it-IT")}</div>
+            <div style={{fontSize:11,color:"#A08060",marginTop:2}}>Ultima att.: {c.lastActivity?new Date(c.lastActivity).toLocaleDateString("it-IT"):"—"}</div>
+          </div>
+        </div>
+
+        {/* Barra avanzamento */}
+        {!inactive&&next&&(
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+              <span style={{color:"#A08060"}}>Prossimo premio: <strong style={{color:"#F5EDE3"}}>{next.label}</strong></span>
+              <span style={{color:"#D96C05",fontWeight:700}}>{pts}/{next.points} pt</span>
+            </div>
+            <div style={{background:"#1A1410",borderRadius:20,height:10,overflow:"hidden"}}>
+              <div style={{background:"linear-gradient(90deg,#D96C05,#F28C35)",height:"100%",width:progress+"%",borderRadius:20,transition:"width 0.5s"}}/>
+            </div>
+            <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Mancano {next.points-pts} punti (~{fmt((next.points-pts)/pointsRate(c))} di acquisti)</div>
+          </div>
+        )}
+
+        {/* Riscatta premi */}
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>🎁 Riscatta Premio</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {REWARDS.map(r=>{
+              const canRedeem=pts>=r.points&&!inactive;
+              return(
+                <div key={r.points} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:canRedeem?"#1E2E1E":"#1A1410",borderRadius:8,border:"1px solid "+(canRedeem?"#2E5E2E":"#3D2E1E")}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:canRedeem?"#F5EDE3":"#A08060"}}>{r.label}</div>
+                    <div style={{fontSize:11,color:"#A08060"}}>{r.points} punti</div>
+                  </div>
+                  <button onClick={()=>handleRedeem(c,r)} disabled={!canRedeem}
+                    style={{background:canRedeem?"#D96C05":"#3D2E1E",color:canRedeem?"white":"#A08060",border:"none",borderRadius:8,padding:"6px 14px",cursor:canRedeem?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
+                    {canRedeem?"Riscatta":"🔒"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Aggiungi punti manualmente */}
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:8}}>➕ Aggiungi punti manualmente</div>
+          <div style={{display:"flex",gap:8}}>
+            <input type="number" value={manualAmt} onChange={e=>setManualAmt(e.target.value)} placeholder="Importo spesa €" style={{...iStyle,flex:1}}/>
+            <button onClick={()=>{handleAddPoints(c,parseFloat(manualAmt)||0);setManualAmt("");}} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontWeight:700,fontSize:13}}>
+              Aggiungi
+            </button>
+          </div>
+          <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Equivale a {Math.floor((parseFloat(manualAmt)||0)*pointsRate(c))} punti (×{pointsRate(c).toFixed(1)})</div>
+        </div>
+
+        {/* Storico */}
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📋 Storico</div>
+          {(c.history||[]).length===0&&<div style={{color:"#A08060",fontSize:13}}>Nessuna attività ancora.</div>}
+          {[...(c.history||[])].reverse().map((h,i)=>(
+            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
+              <span style={{color:"#A08060"}}>{new Date(h.date).toLocaleDateString("it-IT")}</span>
+              <span style={{flex:1,paddingLeft:10}}>{h.desc}</span>
+              <span style={{fontWeight:700,color:h.points>0?"#5CB85C":"#E05252"}}>{h.points>0?"+":""}{h.points} pt</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Statistiche */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+        <StatCard label="Clienti iscritti" value={customers.length} color="#D96C05" icon="👥"/>
+        <StatCard label="Clienti VIP ⭐" value={vipCount} sub={"≥"+VIP_THRESHOLD+" pt accumulati"} color="#F28C35" icon="⭐"/>
+        <StatCard label="Punti in circolazione" value={totalPoints} color="#A78BFA" icon="🎯"/>
+        {inactiveCount>0&&<StatCard label="Inattivi (>12 mesi)" value={inactiveCount} sub="punti azzerati" color="#E05252" icon="⚠️"/>}
+      </div>
+
+      {redeemMsg&&<div style={{padding:"8px 14px",borderRadius:8,background:redeemMsg.type==="ok"?"#1E3A1E":"#3A1E1E",color:redeemMsg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{redeemMsg.text}</div>}
+
+      {/* Aggiungi cliente */}
+      {addForm?(
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>➕ Nuovo Cliente</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:10}}>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Nome *</label><input value={form.firstName} onChange={e=>setForm(f=>({...f,firstName:e.target.value}))} placeholder="Mario" style={iStyle}/></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Cognome *</label><input value={form.lastName} onChange={e=>setForm(f=>({...f,lastName:e.target.value}))} placeholder="Rossi" style={iStyle}/></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Telefono</label><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="(opzionale)" style={iStyle}/></div>
+            <div style={{display:"flex",alignItems:"flex-end",gap:6}}>
+              <button onClick={handleAddCustomer} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Salva</button>
+              <button onClick={()=>setAddForm(false)} style={{background:"#3D2E1E",color:"#F5EDE3",border:"none",borderRadius:8,padding:"9px 10px",fontSize:13,cursor:"pointer"}}>✕</button>
+            </div>
+          </div>
+        </div>
+      ):(
+        <button onClick={()=>setAddForm(true)} style={{background:"#D96C05",color:"white",border:"none",borderRadius:10,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",alignSelf:"flex-start"}}>➕ Registra nuovo cliente</button>
+      )}
+
+      {/* Ricerca */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cerca per nome o telefono..." style={{...iStyle}}/>
+
+      {/* Lista clienti */}
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {filtered.length===0&&<div style={{color:"#A08060",textAlign:"center",padding:30,fontSize:13}}>Nessun cliente trovato. Registra il primo!</div>}
+        {filtered.map(c=>{
+          const pts=activePoints(c);
+          const vip=isVip(c);
+          const inactive=isInactive(c);
+          const next=nextReward(pts);
+          const progress=next?Math.min(100,(pts/next.points)*100):100;
+          return(
+            <div key={c.id} onClick={()=>setSelCustomer(c)} style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"12px 14px",cursor:"pointer",transition:"border-color 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor="#D96C05"}
+              onMouseLeave={e=>e.currentTarget.style.borderColor="#3D2E1E"}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:vip?"#D96C05":"#3D2E1E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,flexShrink:0}}>
+                  {c.firstName[0]}{c.lastName[0]}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:14,fontWeight:700}}>{c.firstName} {c.lastName}</span>
+                    {vip&&<span style={{background:"#D96C05",color:"white",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>⭐ VIP</span>}
+                    {inactive&&(c.points||0)>0&&<span style={{background:"#3D2E1E",color:"#E05252",borderRadius:20,padding:"1px 8px",fontSize:10}}>Inattivo</span>}
+                  </div>
+                  <div style={{fontSize:11,color:"#A08060"}}>{c.phone||"Nessun telefono"} · Iscritto {new Date(c.joinDate).toLocaleDateString("it-IT")}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:20,fontWeight:900,color:inactive?"#A08060":"#D96C05"}}>{inactive?0:pts}<span style={{fontSize:11,color:"#A08060",fontWeight:400}}> pt</span></div>
+                  {next&&!inactive&&<div style={{fontSize:10,color:"#A08060"}}>→ {next.label}</div>}
+                </div>
+              </div>
+              {next&&!inactive&&pts>0&&(
+                <div style={{marginTop:8}}>
+                  <div style={{background:"#1A1410",borderRadius:20,height:4,overflow:"hidden"}}>
+                    <div style={{background:"#D96C05",height:"100%",width:progress+"%",borderRadius:20}}/>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── CASSA CON SELEZIONE CLIENTE ─────────────────────────────────────────────
+// (patch: aggiunge selezione cliente nella Cassa esistente e assegna punti)
+function CassaConFedelta({products,setProducts,sales,setSales,customers,setCustomers}){
+  const [barcodeInput,setBarcodeInput]=useState("");
+  const [cart,setCart]=useState([]);
+  const [searchQ,setSearchQ]=useState("");
+  const [msg,setMsg]=useState(null);
+  const [itemDiscounts,setItemDiscounts]=useState({});
+  const [totalDiscount,setTotalDiscount]=useState({type:"%",value:""});
+  const [showReceipt,setShowReceipt]=useState(false);
+  const [lastSale,setLastSale]=useState(null);
+  const [customerSearch,setCustomerSearch]=useState("");
+  const [selectedCustomer,setSelectedCustomer]=useState(null);
+  const [showCustomerSearch,setShowCustomerSearch]=useState(false);
+  const barcodeRef=useRef(null);
+  useEffect(()=>{barcodeRef.current?.focus();},[]);
+
+  const showMsg=(text,type="ok")=>{setMsg({text,type});setTimeout(()=>setMsg(null),2500);};
+
+  const addToCart=(product,qty=1)=>{
+    if(product.stock<qty){showMsg("Stock insufficiente ("+product.stock+" disponibili)","err");return;}
+    setCart(prev=>{const ex=prev.find(i=>i.id===product.id);if(ex)return prev.map(i=>i.id===product.id?{...i,qty:i.qty+qty}:i);return[...prev,{...product,qty}];});
+    showMsg("✓ "+product.name+" aggiunto","ok");
+  };
+  const handleBarcode=(e)=>{
+    if(e.key==="Enter"){const code=barcodeInput.trim();if(!code)return;const p=products.find(x=>x.barcode===code);if(p){addToCart(p);setBarcodeInput("");}else showMsg("Codice non trovato: "+code,"err");}
+  };
+
+  const getItemDiscount=(item)=>{const d=itemDiscounts[item.id];if(!d||!d.value||parseFloat(d.value)===0)return 0;const base=item.qty*item.sellPrice;if(d.type==="%"){return base*(Math.min(100,parseFloat(d.value)||0)/100);}return Math.min(base,parseFloat(d.value)||0);};
+  const subtotalAfterItemDiscounts=cart.reduce((a,item)=>a+(item.qty*item.sellPrice-getItemDiscount(item)),0);
+  const getTotalDiscount=()=>{if(!totalDiscount.value||parseFloat(totalDiscount.value)===0)return 0;if(totalDiscount.type==="%"){return subtotalAfterItemDiscounts*(Math.min(100,parseFloat(totalDiscount.value)||0)/100);}return Math.min(subtotalAfterItemDiscounts,parseFloat(totalDiscount.value)||0);};
+  const totalDiscountAmt=getTotalDiscount();
+  const cartLordo=subtotalAfterItemDiscounts-totalDiscountAmt;
+  const totalItemDiscounts=cart.reduce((a,item)=>a+getItemDiscount(item),0);
+  const totalAllDiscounts=totalItemDiscounts+totalDiscountAmt;
+
+  const cartRows=cart.map(item=>{
+    const itemDisc=getItemDiscount(item);
+    const ratio=subtotalAfterItemDiscounts>0?(item.qty*item.sellPrice-itemDisc)/subtotalAfterItemDiscounts:0;
+    const itemTotalDisc=itemDisc+totalDiscountAmt*ratio;
+    const finalPrice=(item.qty*item.sellPrice)-itemTotalDisc;
+    const {imponibile,iva}=scorporaIva(finalPrice,item.iva||22);
+    return{...item,finalPrice,imponibile,iva};
+  });
+  const cartImponibile=cartRows.reduce((a,r)=>a+r.imponibile,0);
+  const cartIva=cartRows.reduce((a,r)=>a+r.iva,0);
+  const ivaGroups={};
+  cartRows.forEach(r=>{const k=r.iva||22;if(!ivaGroups[k]){ivaGroups[k]={base:0,iva:0};}ivaGroups[k].base+=r.imponibile;ivaGroups[k].iva+=r.iva;});
+
+  // Punti che verranno assegnati
+  const pointsToAssign=selectedCustomer?Math.floor(cartLordo*pointsRate(selectedCustomer)):0;
+
+  const confirmSale=()=>{
+    if(cart.length===0)return;
+    const now=nowISO();const saleId=uid();
+    const newSales=cart.map(item=>{
+      const row=cartRows.find(r=>r.id===item.id);
+      const discOnItem=getItemDiscount(item);
+      const ratio=subtotalAfterItemDiscounts>0?(item.qty*item.sellPrice-discOnItem)/subtotalAfterItemDiscounts:0;
+      const discShare=totalDiscountAmt*ratio;
+      return{id:uid(),saleGroupId:saleId,productId:item.id,qty:item.qty,sellPrice:item.sellPrice,buyPrice:item.buyPrice,iva:item.iva||22,discountAmount:(discOnItem+discShare),finalPrice:row.finalPrice,date:now,name:item.name,customerId:selectedCustomer?.id||null};
+    });
+    setSales(prev=>[...prev,...newSales]);
+    setProducts(prev=>prev.map(p=>{const ci=cart.find(c=>c.id===p.id);return ci?{...p,stock:p.stock-ci.qty}:p;}));
+    // Assegna punti al cliente
+    if(selectedCustomer&&pointsToAssign>0){
+      const updatedC={...selectedCustomer,
+        points:(selectedCustomer.points||0)+pointsToAssign,
+        totalPointsEarned:(selectedCustomer.totalPointsEarned||0)+pointsToAssign,
+        lastActivity:now,
+        history:[...(selectedCustomer.history||[]),{type:"earn",date:now,desc:"Acquisto "+fmt(cartLordo),points:pointsToAssign}]
+      };
+      setCustomers(prev=>prev.map(c=>c.id===selectedCustomer.id?updatedC:c));
+    }
+    const receipt={id:saleId,date:now,customer:selectedCustomer,pointsAssigned:pointsToAssign,
+      items:cart.map(item=>{const row=cartRows.find(r=>r.id===item.id);return{name:item.name,qty:item.qty,unitPrice:item.sellPrice,iva:item.iva||22,discount:getItemDiscount(item),finalPrice:row.finalPrice};}),
+      totalDiscount:totalDiscountAmt,itemDiscounts:totalItemDiscounts,subtotal:cart.reduce((a,i)=>a+i.qty*i.sellPrice,0),total:cartLordo,imponibile:cartImponibile,iva:cartIva};
+    setLastSale(receipt);
+    setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""});setSelectedCustomer(null);setCustomerSearch("");
+    setShowReceipt(true);
+    showMsg("✅ Vendita registrata! Totale: "+fmt(cartLordo)+(pointsToAssign>0?" · +"+pointsToAssign+" punti a "+selectedCustomer.firstName:""),"ok");
+  };
+
+  const filteredCustomers=customers.filter(c=>(c.firstName+" "+c.lastName).toLowerCase().includes(customerSearch.toLowerCase())||c.phone?.includes(customerSearch)).slice(0,6);
+  const filteredProducts=products.filter(p=>p.name.toLowerCase().includes(searchQ.toLowerCase())||p.barcode?.includes(searchQ));
+  const recentSales=[...sales].reverse().slice(0,12);
+
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 360px",gap:16}}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {/* Scanner */}
+        <div style={{background:"#231A12",border:"2px solid #D96C05",borderRadius:12,padding:14}}>
+          <div style={{fontSize:12,color:"#A08060",marginBottom:6}}>📡 Scansiona o inserisci codice a barre (premi Invio)</div>
+          <input ref={barcodeRef} value={barcodeInput} onChange={e=>setBarcodeInput(e.target.value)} onKeyDown={handleBarcode} placeholder="Punta il lettore qui oppure digita il codice..." style={{...iStyle,fontSize:15}} autoComplete="off"/>
+          {msg&&<div style={{marginTop:8,padding:"6px 10px",borderRadius:6,background:msg.type==="ok"?"#1E3A1E":"#3A1E1E",color:msg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{msg.text}</div>}
+        </div>
+        {/* Ricerca prodotti */}
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:12,color:"#A08060",marginBottom:8}}>🔍 Ricerca manuale</div>
+          <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Cerca per nome o codice..." style={{...iStyle,marginBottom:10}}/>
+          <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+            {filteredProducts.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",background:"#1A1410",borderRadius:8,cursor:"pointer"}} onClick={()=>addToCart(p)}>
+                <div style={{flex:1}}><div style={{fontSize:13}}>{p.name}</div><div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"No barcode"} · Stock: {p.stock} · IVA {p.iva||22}%</div></div>
+                <div style={{fontWeight:700,color:"#D96C05",fontSize:13}}>{fmt(p.sellPrice)}</div>
+                <button onClick={e=>{e.stopPropagation();addToCart(p);}} style={{background:"#D96C05",color:"white",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12}}>+</button>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Vendite recenti */}
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>🕒 Vendite recenti</div>
+          {recentSales.length===0&&<div style={{color:"#A08060",fontSize:13}}>Nessuna vendita ancora.</div>}
+          {recentSales.map(s=>{const lordo=s.finalPrice||s.qty*s.sellPrice;return(
+            <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
+              <span style={{color:"#A08060"}}>{new Date(s.date).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</span>
+              <span style={{flex:1,paddingLeft:8}}>{s.name} ×{s.qty}</span>
+              {s.discountAmount>0&&<span style={{color:"#E05252",fontSize:11,paddingRight:6}}>-{fmt(s.discountAmount)}</span>}
+              <span style={{color:"#D96C05",fontWeight:600}}>{fmt(lordo)}</span>
+            </div>
+          );})}
+        </div>
+      </div>
+
+      {/* CARRELLO */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16,height:"fit-content",position:"sticky",top:80}}>
+        {/* Selezione cliente fedeltà */}
+        <div style={{marginBottom:12,padding:"10px",background:"#1A1410",borderRadius:10,border:"1px solid "+(selectedCustomer?"#D96C05":"#3D2E1E")}}>
+          <div style={{fontSize:12,color:"#A08060",marginBottom:6}}>👤 Cliente fedeltà (opzionale)</div>
+          {selectedCustomer?(
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700}}>{selectedCustomer.firstName} {selectedCustomer.lastName}</div>
+                <div style={{fontSize:11,color:"#D96C05"}}>{activePoints(selectedCustomer)} pt · +{pointsToAssign} pt da questa vendita</div>
+              </div>
+              <button onClick={()=>{setSelectedCustomer(null);setCustomerSearch("");}} style={{background:"none",border:"none",color:"#A08060",cursor:"pointer",fontSize:15}}>✕</button>
+            </div>
+          ):(
+            <div style={{position:"relative"}}>
+              <input value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);setShowCustomerSearch(true);}} onFocus={()=>setShowCustomerSearch(true)}
+                placeholder="Cerca cliente per nome..." style={{...iStyle,fontSize:12}}/>
+              {showCustomerSearch&&customerSearch&&filteredCustomers.length>0&&(
+                <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#231A12",border:"1px solid #3D2E1E",borderRadius:8,zIndex:20,maxHeight:160,overflowY:"auto"}}>
+                  {filteredCustomers.map(c=>(
+                    <div key={c.id} onClick={()=>{setSelectedCustomer(c);setCustomerSearch("");setShowCustomerSearch(false);}}
+                      style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+                      <span style={{fontWeight:600}}>{c.firstName} {c.lastName}</span>
+                      <span style={{color:"#D96C05",marginLeft:8}}>{activePoints(c)} pt</span>
+                      {isVip(c)&&<span style={{marginLeft:6,fontSize:10,color:"#F28C35"}}>⭐VIP</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>🛒 Carrello ({cart.length})</div>
+        {cart.length===0&&<div style={{color:"#A08060",fontSize:13,textAlign:"center",padding:20}}>Vuoto — scansiona o cerca un prodotto</div>}
+        {cart.map(item=>{
+          const disc=itemDiscounts[item.id]||{type:"%",value:""};const discAmt=getItemDiscount(item);
+          return(
+            <div key={item.id} style={{marginBottom:12,padding:"10px 0",borderBottom:"1px solid #3D2E1E"}}>
+              <div style={{fontSize:13,marginBottom:2,fontWeight:600}}>{item.name}</div>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:6}}>IVA {item.iva||22}% · {fmt(item.sellPrice)}/pz</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <button onClick={()=>setCart(prev=>prev.map(i=>i.id===item.id&&i.qty>1?{...i,qty:i.qty-1}:i))} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:4,width:26,height:26,cursor:"pointer",fontSize:15}}>-</button>
+                <span style={{minWidth:24,textAlign:"center",fontSize:14,fontWeight:700}}>{item.qty}</span>
+                <button onClick={()=>setCart(prev=>prev.map(i=>i.id===item.id?{...i,qty:i.qty+1}:i))} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:4,width:26,height:26,cursor:"pointer",fontSize:15}}>+</button>
+                <span style={{marginLeft:"auto",color:discAmt>0?"#A08060":"#D96C05",fontWeight:700,textDecoration:discAmt>0?"line-through":"none",fontSize:13}}>{fmt(item.qty*item.sellPrice)}</span>
+                {discAmt>0&&<span style={{color:"#5CB85C",fontWeight:700,fontSize:13}}>{fmt(item.qty*item.sellPrice-discAmt)}</span>}
+                <button onClick={()=>setCart(prev=>prev.filter(i=>i.id!==item.id))} style={{background:"none",border:"none",color:"#A08060",cursor:"pointer",padding:2}}>✕</button>
+              </div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:11,color:"#A08060",whiteSpace:"nowrap"}}>Sconto:</span>
+                <select value={disc.type} onChange={e=>setItemDiscounts(prev=>({...prev,[item.id]:{...disc,type:e.target.value}}))} style={{...iStyle,width:60,padding:"4px 6px",fontSize:11}}>
+                  <option value="%">%</option><option value="€">€</option>
+                </select>
+                <input type="number" min="0" value={disc.value} onChange={e=>setItemDiscounts(prev=>({...prev,[item.id]:{...disc,value:e.target.value}}))} placeholder="0" style={{...iStyle,width:70,padding:"4px 8px",fontSize:11}}/>
+                {discAmt>0&&<span style={{fontSize:11,color:"#E05252",whiteSpace:"nowrap"}}>-{fmt(discAmt)}</span>}
+              </div>
+            </div>
+          );
+        })}
+
+        {cart.length>0&&(
+          <>
+            <div style={{background:"#1A1410",borderRadius:8,padding:"10px",marginBottom:8}}>
+              <div style={{fontSize:12,color:"#A08060",marginBottom:6,fontWeight:600}}>🏷️ Sconto totale:</div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <select value={totalDiscount.type} onChange={e=>setTotalDiscount(d=>({...d,type:e.target.value}))} style={{...iStyle,width:60,padding:"4px 6px",fontSize:12}}>
+                  <option value="%">%</option><option value="€">€</option>
+                </select>
+                <input type="number" min="0" value={totalDiscount.value} onChange={e=>setTotalDiscount(d=>({...d,value:e.target.value}))} placeholder="0" style={{...iStyle,flex:1,padding:"4px 8px",fontSize:12}}/>
+                {totalDiscountAmt>0&&<span style={{fontSize:12,color:"#E05252",fontWeight:700}}>-{fmt(totalDiscountAmt)}</span>}
+              </div>
+            </div>
+            <div style={{background:"#1A1410",borderRadius:8,padding:"8px 10px",marginBottom:8,fontSize:12}}>
+              {Object.entries(ivaGroups).map(([aliq,v])=>(<div key={aliq} style={{display:"flex",justifyContent:"space-between",color:"#A08060",marginBottom:2}}><span>IVA {aliq}% su {fmt(v.base)}</span><span style={{color:"#A78BFA"}}>{fmt(v.iva)}</span></div>))}
+              <div style={{display:"flex",justifyContent:"space-between",borderTop:"1px solid #3D2E1E",paddingTop:4,marginTop:4}}><span style={{color:"#A08060"}}>Imponibile</span><span>{fmt(cartImponibile)}</span></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#A08060"}}>IVA</span><span style={{color:"#A78BFA"}}>{fmt(cartIva)}</span></div>
+              {totalAllDiscounts>0&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{color:"#A08060"}}>Sconti</span><span style={{color:"#E05252"}}>-{fmt(totalAllDiscounts)}</span></div>}
+              {selectedCustomer&&pointsToAssign>0&&<div style={{display:"flex",justifyContent:"space-between",marginTop:4,paddingTop:4,borderTop:"1px solid #3D2E1E"}}><span style={{color:"#A08060"}}>Punti da assegnare</span><span style={{color:"#D96C05",fontWeight:700}}>+{pointsToAssign} pt</span></div>}
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:17,fontWeight:800,borderTop:"2px solid #3D2E1E"}}>
+              <span>Totale</span><span style={{color:"#D96C05"}}>{fmt(cartLordo)}</span>
+            </div>
+            <button onClick={confirmSale} style={{width:"100%",background:"#D96C05",color:"white",border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>✅ Conferma Vendita</button>
+            <button onClick={()=>{setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""});setSelectedCustomer(null);}} style={{width:"100%",marginTop:8,background:"transparent",color:"#A08060",border:"1px solid #3D2E1E",borderRadius:10,padding:"8px",fontSize:13,cursor:"pointer"}}>Svuota carrello</button>
+          </>
+        )}
+      </div>
+
+      {/* RICEVUTA */}
+      {showReceipt&&lastSale&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100}} onClick={()=>setShowReceipt(false)}>
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:16,padding:24,maxWidth:380,width:"90%",maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{textAlign:"center",marginBottom:16}}>
+              <div style={{fontSize:18,fontWeight:800,color:"#D96C05"}}>🐾 A Passo di Coda</div>
+              <div style={{fontSize:12,color:"#A08060"}}>Azzano Mella (Brescia)</div>
+              <div style={{fontSize:11,color:"#A08060",marginTop:4}}>{new Date(lastSale.date).toLocaleString("it-IT")}</div>
+              {lastSale.customer&&<div style={{fontSize:12,color:"#F5EDE3",marginTop:4}}>Cliente: {lastSale.customer.firstName} {lastSale.customer.lastName}</div>}
+            </div>
+            <div style={{borderTop:"1px dashed #3D2E1E",paddingTop:12,marginBottom:12}}>
+              {lastSale.items.map((item,i)=>(<div key={i} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:13}}><span>{item.name}</span><span style={{fontWeight:700}}>{fmt(item.finalPrice)}</span></div><div style={{fontSize:11,color:"#A08060"}}>{item.qty} × {fmt(item.unitPrice)}{item.discount>0?" · -"+fmt(item.discount):""}</div></div>))}
+            </div>
+            <div style={{borderTop:"1px dashed #3D2E1E",paddingTop:10}}>
+              {lastSale.totalDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#E05252",marginBottom:4}}><span>Sconto</span><span>-{fmt(lastSale.totalDiscount)}</span></div>}
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:17,fontWeight:800,marginBottom:8}}><span>TOTALE</span><span style={{color:"#D96C05"}}>{fmt(lastSale.total)}</span></div>
+              {lastSale.pointsAssigned>0&&(
+                <div style={{background:"#1E2E1E",borderRadius:8,padding:"8px 12px",textAlign:"center"}}>
+                  <div style={{fontSize:13,color:"#5CB85C",fontWeight:700}}>🎯 +{lastSale.pointsAssigned} punti assegnati a {lastSale.customer.firstName}!</div>
+                  <div style={{fontSize:11,color:"#A08060",marginTop:2}}>Saldo: {(lastSale.customer.points||0)+lastSale.pointsAssigned} punti totali</div>
+                </div>
+              )}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:16}}>
+              <button onClick={()=>window.print()} style={{flex:1,background:"#3D2E1E",color:"#F5EDE3",border:"none",borderRadius:8,padding:"10px",fontSize:13,cursor:"pointer"}}>🖨️ Stampa</button>
+              <button onClick={()=>setShowReceipt(false)} style={{flex:1,background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"10px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Chiudi</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── APP ROOT ────────────────────────────────────────────────────────────────
 function App(){
   const [tab,setTab]=useState("dashboard");
@@ -769,24 +1321,20 @@ function App(){
   const [sales,setSales]=useState(()=>load(KEYS.sales)||[]);
   const [expenses,setExpenses]=useState(()=>load(KEYS.expenses)||SAMPLE_EXPENSES||[]);
   const [settings,setSettings]=useState(()=>load(KEYS.settings)||{budget:2000});
+  const [customers,setCustomers]=useState(()=>load("apc_customers")||[]);
   useEffect(()=>save(KEYS.products,products),[products]);
   useEffect(()=>save(KEYS.sales,sales),[sales]);
   useEffect(()=>save(KEYS.expenses,expenses),[expenses]);
   useEffect(()=>save(KEYS.settings,settings),[settings]);
+  useEffect(()=>save("apc_customers",customers),[customers]);
 
   const getSalesThisMonth=useCallback(()=>{const m=thisMonth();return sales.filter(s=>s.date.startsWith(m));},[sales]);
   const getSalesByProduct=useCallback((monthStr)=>{
     const m=monthStr||thisMonth();const map={};
-    sales.filter(s=>s.date.startsWith(m)).forEach(s=>{
-      if(!map[s.productId])map[s.productId]={qty:0,revenue:0,cost:0};
-      map[s.productId].qty+=s.qty;
-      map[s.productId].revenue+=s.qty*s.sellPrice;
-      map[s.productId].cost+=s.qty*s.buyPrice;
-    });
+    sales.filter(s=>s.date.startsWith(m)).forEach(s=>{if(!map[s.productId])map[s.productId]={qty:0,revenue:0,cost:0};map[s.productId].qty+=s.qty;map[s.productId].revenue+=s.qty*s.sellPrice;map[s.productId].cost+=s.qty*s.buyPrice;});
     return map;
   },[sales]);
 
-  // Alert scadenze per badge nav
   const expiryCount=products.filter(p=>p.expiryDate&&daysToExpiry(p.expiryDate)<=30).length;
 
   const tabs=[
@@ -796,6 +1344,7 @@ function App(){
     {id:"spese",label:"Spese",icon:"💳"},
     {id:"ordini",label:"Proposta Ordini",icon:"📋"},
     {id:"report",label:"Report",icon:"📊"},
+    {id:"fedelta",label:"Fedeltà",icon:"⭐"},
     {id:"backup",label:"Backup",icon:"💾"},
   ];
 
@@ -803,28 +1352,21 @@ function App(){
     <div>
       <div style={{background:"#231A12",borderBottom:"1px solid #3D2E1E",padding:"12px 20px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:50}}>
         <div style={{width:36,height:36,borderRadius:"50%",background:"#D96C05",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🐾</div>
-        <div>
-          <div style={{fontWeight:700,fontSize:15}}>A Passo di Coda</div>
-          <div style={{fontSize:11,color:"#A08060"}}>Gestionale negozio</div>
-        </div>
+        <div><div style={{fontWeight:700,fontSize:15}}>A Passo di Coda</div><div style={{fontSize:11,color:"#A08060"}}>Gestionale negozio</div></div>
         {expiryCount>0&&<div style={{marginLeft:8,background:"#A78BFA",color:"white",borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:700}}>📅 {expiryCount} in scadenza</div>}
         <div style={{marginLeft:"auto",fontSize:12,color:"#A08060"}}>{new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"})}</div>
       </div>
       <div style={{background:"#231A12",borderBottom:"1px solid #3D2E1E",overflowX:"auto",display:"flex"}}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{padding:"10px 16px",fontSize:13,fontWeight:tab===t.id?700:500,color:tab===t.id?"#D96C05":"#A08060",background:"none",border:"none",cursor:"pointer",borderBottom:tab===t.id?"2px solid #D96C05":"2px solid transparent",whiteSpace:"nowrap",transition:"all 0.15s"}}>
-            {t.icon} {t.label}
-          </button>
-        ))}
+        {tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"10px 16px",fontSize:13,fontWeight:tab===t.id?700:500,color:tab===t.id?"#D96C05":"#A08060",background:"none",border:"none",cursor:"pointer",borderBottom:tab===t.id?"2px solid #D96C05":"2px solid transparent",whiteSpace:"nowrap",transition:"all 0.15s"}}>{t.icon} {t.label}</button>))}
       </div>
       <div style={{padding:"16px",maxWidth:1200,margin:"0 auto"}}>
         {tab==="dashboard"&&<Dashboard products={products} sales={sales} expenses={expenses} getSalesThisMonth={getSalesThisMonth} getSalesByProduct={getSalesByProduct}/>}
-        {tab==="cassa"&&<Cassa products={products} setProducts={setProducts} sales={sales} setSales={setSales}/>}
+        {tab==="cassa"&&<CassaConFedelta products={products} setProducts={setProducts} sales={sales} setSales={setSales} customers={customers} setCustomers={setCustomers}/>}
         {tab==="prodotti"&&<Prodotti products={products} setProducts={setProducts}/>}
         {tab==="spese"&&<Spese expenses={expenses} setExpenses={setExpenses}/>}
         {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings}/>}
         {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct}/>}
+        {tab==="fedelta"&&<Fedelta customers={customers} setCustomers={setCustomers} sales={sales}/>}
         {tab==="backup"&&<Backup products={products} sales={sales} expenses={expenses} settings={settings} setProducts={setProducts} setSales={setSales} setExpenses={setExpenses} setSettings={setSettings}/>}
       </div>
     </div>
