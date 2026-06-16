@@ -27,6 +27,7 @@ const KEYS = { products:"apc_products", sales:"apc_sales", expenses:"apc_expense
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch { return null; } };
 const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const ivaForCategory = (cat) => (cat||"").toUpperCase().includes("BARF") ? 10 : 22;
+const CATEGORIES = ["Crocchette cane","Umido cane","Masticativi","Guinzagli e pettorine","Accessori cane","Snack cane","Crocchette gatto","Umido gatto","Snack gatto","Accessori gatto","BARF"];
 const fmt = (n) => new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"}).format(n||0);
 const nowISO = () => new Date().toISOString();
 const thisMonth = () => new Date().toISOString().slice(0,7);
@@ -413,12 +414,12 @@ function Cassa({products,setProducts,sales,setSales}){
 
 // ─── PRODOTTI ────────────────────────────────────────────────────────────────
 function Prodotti({products,setProducts}){
-  const empty={name:"",barcode:"",buyPrice:"",sellPrice:"",stock:"",minStock:"",category:"",iva:22,expiryDate:""};
+  const empty={name:"",barcode:"",buyPrice:"",sellPrice:"",stock:"",minStock:"",category:"",iva:22,expiryDate:"",supplier:""};
   const [form,setForm]=useState(empty);
   const [editId,setEditId]=useState(null);
   const [search,setSearch]=useState("");
   const [catFilter,setCatFilter]=useState("Tutte");
-  const categories=["Tutte",...new Set(products.map(p=>p.category).filter(Boolean))];
+  const categories=["Tutte",...CATEGORIES];
 
   const handleCategoryChange=(cat)=>setForm(f=>({...f,category:cat,iva:ivaForCategory(cat)}));
 
@@ -430,7 +431,7 @@ function Prodotti({products,setProducts}){
     setForm(empty);
   };
 
-  const startEdit=(p)=>{setForm({...p,buyPrice:p.buyPrice.toString(),sellPrice:p.sellPrice.toString(),stock:p.stock.toString(),minStock:(p.minStock||0).toString(),iva:p.iva||22,expiryDate:p.expiryDate||""});setEditId(p.id);};
+  const startEdit=(p)=>{setForm({...p,buyPrice:p.buyPrice.toString(),sellPrice:p.sellPrice.toString(),stock:p.stock.toString(),minStock:(p.minStock||0).toString(),iva:p.iva||22,expiryDate:p.expiryDate||"",supplier:p.supplier||""});setEditId(p.id);};
 
   const filtered=products.filter(p=>{
     const matchCat=catFilter==="Tutte"||p.category===catFilter;
@@ -457,7 +458,10 @@ function Prodotti({products,setProducts}){
           ))}
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             <label style={{fontSize:11,color:"#A08060"}}>Categoria</label>
-            <input value={form.category} onChange={e=>handleCategoryChange(e.target.value)} placeholder="es. Cibo secco" style={iStyle}/>
+            <select value={form.category} onChange={e=>handleCategoryChange(e.target.value)} style={iStyle}>
+              <option value="">-- Seleziona --</option>
+              {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             <label style={{fontSize:11,color:"#A08060"}}>Aliquota IVA</label>
@@ -466,6 +470,10 @@ function Prodotti({products,setProducts}){
               <option value={10}>10% (BARF)</option>
               <option value={4}>4% (ridotta)</option>
             </select>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Fornitore (opzionale)</label>
+            <input value={form.supplier||""} onChange={e=>setForm(f=>({...f,supplier:e.target.value}))} placeholder="es. Narava, Welldog..." style={iStyle}/>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
             <label style={{fontSize:11,color:"#A08060"}}>📅 Scadenza più ravvicinata</label>
@@ -548,7 +556,7 @@ function Prodotti({products,setProducts}){
               <div style={{width:8,height:8,borderRadius:"50%",background:stockColor(p),flexShrink:0}}/>
               <div style={{flex:1}}>
                 <div style={{fontSize:13,fontWeight:600}}>{p.name}</div>
-                <div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"No barcode"} · {p.category} · IVA {p.iva||22}%</div>
+                <div style={{fontSize:11,color:"#A08060"}}>{p.barcode||"No barcode"} · {p.category} · IVA {p.iva||22}%{p.supplier?" · "+p.supplier:""}</div>
                 {p.expiryDate&&<div style={{fontSize:11,color:ec,marginTop:2}}>📅 Scad: {new Date(p.expiryDate).toLocaleDateString("it-IT")} {days!==null&&("("+( days<=0?"SCADUTO":days+" gg")+")")}</div>}
               </div>
               <div style={{textAlign:"right",fontSize:12}}>
@@ -826,6 +834,98 @@ const isInactive=(customer)=>{
 const activePoints=(customer)=>isInactive(customer)?0:(customer.points||0);
 const nextReward=(pts)=>REWARDS.find(r=>r.points>pts)||null;
 
+function ClienteDettaglio({c,onBack,handleRedeem,handleAddPoints,redeemMsg,sales}){
+  const [manualAmt,setManualAmt]=useState("");
+  const pts=activePoints(c);
+  const vip=isVip(c);
+  const inactive=isInactive(c);
+  const next=nextReward(pts);
+  const progress=next?Math.min(100,(pts/next.points)*100):100;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={onBack} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:13}}>← Indietro</button>
+        <div style={{fontSize:16,fontWeight:800}}>{c.firstName} {c.lastName}</div>
+        {vip&&<span style={{background:"#D96C05",color:"white",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⭐ VIP</span>}
+        {inactive&&<span style={{background:"#3D2E1E",color:"#E05252",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⚠️ Inattivo</span>}
+      </div>
+      {redeemMsg&&<div style={{padding:"8px 14px",borderRadius:8,background:redeemMsg.type==="ok"?"#1E3A1E":"#3A1E1E",color:redeemMsg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{redeemMsg.text}</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,color:"#A08060"}}>Punti disponibili</div>
+          <div style={{fontSize:28,fontWeight:900,color:inactive?"#A08060":"#D96C05"}}>{inactive?"0*":pts}</div>
+          {inactive&&<div style={{fontSize:10,color:"#E05252"}}>*azzerati per inattività</div>}
+        </div>
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,color:"#A08060"}}>Punti totali guadagnati</div>
+          <div style={{fontSize:28,fontWeight:900,color:"#F28C35"}}>{c.totalPointsEarned||0}</div>
+        </div>
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,color:"#A08060"}}>Moltiplicatore</div>
+          <div style={{fontSize:28,fontWeight:900,color:vip?"#D96C05":"#F5EDE3"}}>×{pointsRate(c).toFixed(1)}</div>
+          <div style={{fontSize:10,color:"#A08060"}}>{vip?"Cliente VIP":"Standard"}</div>
+        </div>
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,color:"#A08060"}}>Iscritto dal</div>
+          <div style={{fontSize:14,fontWeight:700,marginTop:4}}>{new Date(c.joinDate).toLocaleDateString("it-IT")}</div>
+          <div style={{fontSize:11,color:"#A08060",marginTop:2}}>Ultima att.: {c.lastActivity?new Date(c.lastActivity).toLocaleDateString("it-IT"):"—"}</div>
+        </div>
+      </div>
+      {!inactive&&next&&(
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+            <span style={{color:"#A08060"}}>Prossimo premio: <strong style={{color:"#F5EDE3"}}>{next.label}</strong></span>
+            <span style={{color:"#D96C05",fontWeight:700}}>{pts}/{next.points} pt</span>
+          </div>
+          <div style={{background:"#1A1410",borderRadius:20,height:10,overflow:"hidden"}}>
+            <div style={{background:"linear-gradient(90deg,#D96C05,#F28C35)",height:"100%",width:progress+"%",borderRadius:20,transition:"width 0.5s"}}/>
+          </div>
+          <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Mancano {next.points-pts} punti (~{fmt((next.points-pts)/pointsRate(c))} di acquisti)</div>
+        </div>
+      )}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>🎁 Riscatta Premio</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {REWARDS.map(r=>{
+            const canRedeem=pts>=r.points&&!inactive;
+            return(
+              <div key={r.points} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:canRedeem?"#1E2E1E":"#1A1410",borderRadius:8,border:"1px solid "+(canRedeem?"#2E5E2E":"#3D2E1E")}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:canRedeem?"#F5EDE3":"#A08060"}}>{r.label}</div>
+                  <div style={{fontSize:11,color:"#A08060"}}>{r.points} punti</div>
+                </div>
+                <button onClick={()=>handleRedeem(c,r)} disabled={!canRedeem}
+                  style={{background:canRedeem?"#D96C05":"#3D2E1E",color:canRedeem?"white":"#A08060",border:"none",borderRadius:8,padding:"6px 14px",cursor:canRedeem?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
+                  {canRedeem?"Riscatta":"🔒"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:8}}>➕ Aggiungi punti manualmente</div>
+        <div style={{display:"flex",gap:8}}>
+          <input type="number" value={manualAmt} onChange={e=>setManualAmt(e.target.value)} placeholder="Importo spesa €" style={{...iStyle,flex:1}}/>
+          <button onClick={()=>{handleAddPoints(c,parseFloat(manualAmt)||0);setManualAmt("");}} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontWeight:700,fontSize:13}}>Aggiungi</button>
+        </div>
+        <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Equivale a {Math.floor((parseFloat(manualAmt)||0)*pointsRate(c))} punti (×{pointsRate(c).toFixed(1)})</div>
+      </div>
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📋 Storico</div>
+        {(c.history||[]).length===0&&<div style={{color:"#A08060",fontSize:13}}>Nessuna attività ancora.</div>}
+        {[...(c.history||[])].reverse().map((h,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
+            <span style={{color:"#A08060"}}>{new Date(h.date).toLocaleDateString("it-IT")}</span>
+            <span style={{flex:1,paddingLeft:10}}>{h.desc}</span>
+            <span style={{fontWeight:700,color:h.points>0?"#5CB85C":"#E05252"}}>{h.points>0?"+":""}{h.points} pt</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Fedelta({customers,setCustomers,sales}){
   const [subTab,setSubTab]=useState("lista");
   const [search,setSearch]=useState("");
@@ -881,111 +981,7 @@ function Fedelta({customers,setCustomers,sales}){
 
   // Dettaglio cliente selezionato
   if(selCustomer){
-    const c=selCustomer;
-    const pts=activePoints(c);
-    const vip=isVip(c);
-    const inactive=isInactive(c);
-    const next=nextReward(pts);
-    const progress=next?Math.min(100,(pts/next.points)*100):100;
-    const [manualAmt,setManualAmt]=useState("");
-    // Vendite collegate
-    const customerSales=sales.filter(s=>s.customerId===c.id).reverse().slice(0,10);
-
-    return(
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>setSelCustomer(null)} style={{background:"#3D2E1E",border:"none",color:"#F5EDE3",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:13}}>← Indietro</button>
-          <div style={{fontSize:16,fontWeight:800}}>{c.firstName} {c.lastName}</div>
-          {vip&&<span style={{background:"#D96C05",color:"white",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⭐ VIP</span>}
-          {inactive&&<span style={{background:"#3D2E1E",color:"#E05252",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>⚠️ Inattivo</span>}
-        </div>
-
-        {redeemMsg&&<div style={{padding:"8px 14px",borderRadius:8,background:redeemMsg.type==="ok"?"#1E3A1E":"#3A1E1E",color:redeemMsg.type==="ok"?"#5CB85C":"#E05252",fontSize:13}}>{redeemMsg.text}</div>}
-
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Punti disponibili</div>
-            <div style={{fontSize:28,fontWeight:900,color:inactive?"#A08060":"#D96C05"}}>{inactive?"0*":pts}</div>
-            {inactive&&<div style={{fontSize:10,color:"#E05252"}}>*azzerati per inattività</div>}
-          </div>
-          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Punti totali guadagnati</div>
-            <div style={{fontSize:28,fontWeight:900,color:"#F28C35"}}>{c.totalPointsEarned||0}</div>
-          </div>
-          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Moltiplicatore</div>
-            <div style={{fontSize:28,fontWeight:900,color:vip?"#D96C05":"#F5EDE3"}}>×{pointsRate(c).toFixed(1)}</div>
-            <div style={{fontSize:10,color:"#A08060"}}>{vip?"Cliente VIP":"Standard"}</div>
-          </div>
-          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-            <div style={{fontSize:11,color:"#A08060"}}>Iscritto dal</div>
-            <div style={{fontSize:14,fontWeight:700,marginTop:4}}>{new Date(c.joinDate).toLocaleDateString("it-IT")}</div>
-            <div style={{fontSize:11,color:"#A08060",marginTop:2}}>Ultima att.: {c.lastActivity?new Date(c.lastActivity).toLocaleDateString("it-IT"):"—"}</div>
-          </div>
-        </div>
-
-        {/* Barra avanzamento */}
-        {!inactive&&next&&(
-          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
-              <span style={{color:"#A08060"}}>Prossimo premio: <strong style={{color:"#F5EDE3"}}>{next.label}</strong></span>
-              <span style={{color:"#D96C05",fontWeight:700}}>{pts}/{next.points} pt</span>
-            </div>
-            <div style={{background:"#1A1410",borderRadius:20,height:10,overflow:"hidden"}}>
-              <div style={{background:"linear-gradient(90deg,#D96C05,#F28C35)",height:"100%",width:progress+"%",borderRadius:20,transition:"width 0.5s"}}/>
-            </div>
-            <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Mancano {next.points-pts} punti (~{fmt((next.points-pts)/pointsRate(c))} di acquisti)</div>
-          </div>
-        )}
-
-        {/* Riscatta premi */}
-        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>🎁 Riscatta Premio</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {REWARDS.map(r=>{
-              const canRedeem=pts>=r.points&&!inactive;
-              return(
-                <div key={r.points} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:canRedeem?"#1E2E1E":"#1A1410",borderRadius:8,border:"1px solid "+(canRedeem?"#2E5E2E":"#3D2E1E")}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:600,color:canRedeem?"#F5EDE3":"#A08060"}}>{r.label}</div>
-                    <div style={{fontSize:11,color:"#A08060"}}>{r.points} punti</div>
-                  </div>
-                  <button onClick={()=>handleRedeem(c,r)} disabled={!canRedeem}
-                    style={{background:canRedeem?"#D96C05":"#3D2E1E",color:canRedeem?"white":"#A08060",border:"none",borderRadius:8,padding:"6px 14px",cursor:canRedeem?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
-                    {canRedeem?"Riscatta":"🔒"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Aggiungi punti manualmente */}
-        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:8}}>➕ Aggiungi punti manualmente</div>
-          <div style={{display:"flex",gap:8}}>
-            <input type="number" value={manualAmt} onChange={e=>setManualAmt(e.target.value)} placeholder="Importo spesa €" style={{...iStyle,flex:1}}/>
-            <button onClick={()=>{handleAddPoints(c,parseFloat(manualAmt)||0);setManualAmt("");}} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontWeight:700,fontSize:13}}>
-              Aggiungi
-            </button>
-          </div>
-          <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Equivale a {Math.floor((parseFloat(manualAmt)||0)*pointsRate(c))} punti (×{pointsRate(c).toFixed(1)})</div>
-        </div>
-
-        {/* Storico */}
-        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📋 Storico</div>
-          {(c.history||[]).length===0&&<div style={{color:"#A08060",fontSize:13}}>Nessuna attività ancora.</div>}
-          {[...(c.history||[])].reverse().map((h,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
-              <span style={{color:"#A08060"}}>{new Date(h.date).toLocaleDateString("it-IT")}</span>
-              <span style={{flex:1,paddingLeft:10}}>{h.desc}</span>
-              <span style={{fontWeight:700,color:h.points>0?"#5CB85C":"#E05252"}}>{h.points>0?"+":""}{h.points} pt</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
+    return <ClienteDettaglio c={selCustomer} onBack={()=>setSelCustomer(null)} handleRedeem={handleRedeem} handleAddPoints={handleAddPoints} redeemMsg={redeemMsg} sales={sales}/>;
   }
 
   return(
@@ -1317,9 +1313,9 @@ function CassaConFedelta({products,setProducts,sales,setSales,customers,setCusto
 // ─── APP ROOT ────────────────────────────────────────────────────────────────
 function App(){
   const [tab,setTab]=useState("dashboard");
-  const [products,setProducts]=useState(()=>load(KEYS.products)||SAMPLE_PRODUCTS||[]);
+  const [products,setProducts]=useState(()=>load(KEYS.products)||[]);
   const [sales,setSales]=useState(()=>load(KEYS.sales)||[]);
-  const [expenses,setExpenses]=useState(()=>load(KEYS.expenses)||SAMPLE_EXPENSES||[]);
+  const [expenses,setExpenses]=useState(()=>load(KEYS.expenses)||[]);
   const [settings,setSettings]=useState(()=>load(KEYS.settings)||{budget:2000});
   const [customers,setCustomers]=useState(()=>load("apc_customers")||[]);
   useEffect(()=>save(KEYS.products,products),[products]);
@@ -1373,19 +1369,6 @@ function App(){
   );
 }
 
-const SAMPLE_PRODUCTS=[
-  {id:"1",name:"Crocchette Premium Pollo 3kg",barcode:"8001234567890",buyPrice:12.50,sellPrice:22.90,stock:15,minStock:5,category:"Cibo secco",iva:22,expiryDate:""},
-  {id:"2",name:"Cibo umido Vitello 400g",barcode:"8009876543210",buyPrice:1.80,sellPrice:3.50,stock:40,minStock:12,category:"Cibo umido",iva:22,expiryDate:""},
-  {id:"3",name:"Snack naturale manzo",barcode:"8005551234567",buyPrice:4.20,sellPrice:8.90,stock:22,minStock:8,category:"Snack",iva:22,expiryDate:""},
-  {id:"4",name:"Barf Manzo 500g (Italia Pet Food)",barcode:"",buyPrice:3.10,sellPrice:6.50,stock:18,minStock:6,category:"BARF",iva:10,expiryDate:"2026-07-15"},
-  {id:"5",name:"Pettorina comfort taglia M",barcode:"8007778889990",buyPrice:11.00,sellPrice:24.90,stock:8,minStock:3,category:"Accessori",iva:22,expiryDate:""},
-];
-const SAMPLE_EXPENSES=[
-  {id:"e1",month:"2026-05",label:"Affitto",amount:850},
-  {id:"e2",month:"2026-05",label:"Utenze",amount:180},
-  {id:"e3",month:"2026-06",label:"Affitto",amount:850},
-  {id:"e4",month:"2026-06",label:"Utenze",amount:160},
-];
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
