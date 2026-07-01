@@ -28,6 +28,23 @@ const load = (k) => { try { return JSON.parse(localStorage.getItem(k)) || null; 
 const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const ivaForCategory = (cat) => (cat||"").toUpperCase().includes("BARF") ? 10 : 22;
 const CATEGORIES = ["Crocchette cane","Umido cane","Masticativi","Guinzagli e pettorine","Accessori cane","Snack cane","Crocchette gatto","Umido gatto","Snack gatto","Accessori gatto","BARF"];
+
+const SUPPLIERS_DEFAULT = [
+  {id:"sup1", name:"Global Pet", minOrder:1000, brands:["Wildfull","Narava","Kudo","Terra Canis","Leonardo","Natua","Belcando"]},
+  {id:"sup2", name:"DPO", minOrder:450, brands:[]},
+  {id:"sup3", name:"Welldog", minOrder:715, brands:["Welldog"]},
+  {id:"sup4", name:"Capi", minOrder:380, brands:["Primordial"]},
+  {id:"sup5", name:"Pura Natura", minOrder:380, brands:["Pura Natura"]},
+  {id:"sup6", name:"Disugual", minOrder:300, brands:["Disugual"]},
+  {id:"sup7", name:"CIam", minOrder:300, brands:["Woolf","Marie","Orazio","Quapas"]},
+  {id:"sup8", name:"Farm Company", minOrder:300, brands:["Farm Company","Naso Nero"]},
+  {id:"sup9", name:"Mast", minOrder:250, brands:[]},
+  {id:"sup10", name:"Harper & Bone", minOrder:250, brands:["Harper and Bone"]},
+  {id:"sup11", name:"Sanadog", minOrder:0, brands:["Mennuti","Fidovet","Yogupet"]},
+  {id:"sup12", name:"Kauartikel", minOrder:0, brands:["Nest","Flexi"]},
+  {id:"sup13", name:"Biscofarm", minOrder:0, brands:[]},
+];
+
 const fmt = (n) => new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"}).format(n||0);
 const nowISO = () => new Date().toISOString();
 const thisMonth = () => new Date().toISOString().slice(0,7);
@@ -611,46 +628,324 @@ function Spese({expenses,setExpenses}){
 }
 
 // ─── ORDINI ──────────────────────────────────────────────────────────────────
-function Ordini({products,getSalesByProduct,settings,setSettings}){
+function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSuppliers}){
   const [budget,setBudget]=useState(settings.budget.toString());
   const [horizon,setHorizon]=useState("1");
+  const [expandedSup,setExpandedSup]=useState({});
   const saveBudget=()=>setSettings(s=>({...s,budget:parseFloat(budget)||0}));
+
   const now=new Date();
+  // Ultimi 3 mesi con peso stagionale: mese più recente vale di più
   const lastMonths=[0,1,2].map(i=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
+  const weights=[0.5,0.33,0.17]; // più recente pesa di più
   const salesMaps=lastMonths.map(m=>getSalesByProduct(m));
+
+  // Media ponderata per prodotto
   const avgSales={};
-  products.forEach(p=>{const totals=salesMaps.map(m=>m[p.id]?.qty||0);const nz=totals.filter(x=>x>0);avgSales[p.id]=nz.length>0?nz.reduce((a,b)=>a+b,0)/nz.length:0;});
+  products.forEach(p=>{
+    let weightedSum=0,weightSum=0;
+    salesMaps.forEach((m,i)=>{const qty=m[p.id]?.qty||0;if(qty>0){weightedSum+=qty*weights[i];weightSum+=weights[i];}});
+    avgSales[p.id]=weightSum>0?weightedSum/weightSum:0;
+  });
+
   const h=parseInt(horizon);
-  const proposals=products.map(p=>{const avg=avgSales[p.id];const needed=Math.ceil(avg*h);const toOrder=Math.max(0,needed-p.stock);return{...p,avg:avg.toFixed(1),needed,toOrder,cost:toOrder*p.buyPrice};}).filter(p=>p.toOrder>0).sort((a,b)=>b.cost-a.cost);
-  const totalCost=proposals.reduce((a,p)=>a+p.cost,0);
-  const budgetLeft=settings.budget-totalCost;
-  let cum=0;
-  const prioritized=proposals.map(p=>{const fits=cum+p.cost<=settings.budget;if(fits)cum+=p.cost;return{...p,fits};});
-  return (
+
+  // Funzione per trovare il fornitore di un prodotto
+  const getSupplierForProduct=(p)=>{
+    if(p.distributorId){return suppliers.find(s=>s.id===p.distributorId)||null;}
+    // Tenta match automatico sul brand
+    const sup=suppliers.find(s=>s.brands&&s.brands.some(b=>p.supplier&&p.supplier.toLowerCase().includes(b.toLowerCase())));
+    return sup||null;
+  };
+
+  // Calcola fabbisogno per ogni prodotto
+  const allNeeds=products.map(p=>{
+    const avg=avgSales[p.id]||0;
+    // Urgenza: giorni rimanenti di stock
+    const daysOfStock=avg>0?(p.stock/(avg/30)):999;
+    const needed=Math.ceil(avg*h);
+    const toOrder=Math.max(0,needed-p.stock);
+    const cost=toOrder*p.buyPrice;
+    const sup=getSupplierForProduct(p);
+    return{...p,avg:avg.toFixed(1),needed,toOrder,cost,supplier:sup,daysOfStock:Math.round(daysOfStock),urgency:daysOfStock<30?3:daysOfStock<60?2:1};
+  }).filter(p=>p.toOrder>0);
+
+  // Raggruppa per fornitore
+  const grouped={};
+  const noSupplier=[];
+  allNeeds.forEach(p=>{
+    if(p.supplier){
+      const k=p.supplier.id;
+      if(!grouped[k])grouped[k]={supplier:p.supplier,items:[],total:0};
+      grouped[k].items.push(p);
+      grouped[k].total+=p.cost;
+    } else noSupplier.push(p);
+  });
+
+  // Per ogni gruppo: se sotto minimo, aggiungi i prodotti più venduti fino a raggiungere il minimo (senza sforare budget)
+  let budgetUsed=0;
+  const supplierGroups=Object.values(grouped).map(g=>{
+    const minOrder=g.supplier.minOrder||0;
+    let total=g.total;
+    let topUp=[];
+    // Se sotto minimo, cerca prodotti da aggiungere (quelli con avg>0 non già nell'ordine)
+    if(total<minOrder&&minOrder>0){
+      const alreadyIds=new Set(g.items.map(i=>i.id));
+      const candidates=products
+        .filter(p=>getSupplierForProduct(p)?.id===g.supplier.id&&!alreadyIds.has(p.id)&&(avgSales[p.id]||0)>0)
+        .sort((a,b)=>(avgSales[b.id]||0)-(avgSales[a.id]||0));
+      for(const c of candidates){
+        if(total>=minOrder)break;
+        const avg=avgSales[c.id]||0;
+        const extraQty=Math.ceil(avg*h);
+        const extraCost=extraQty*c.buyPrice;
+        if(extraCost>0){
+          topUp.push({...c,avg:avg.toFixed(1),toOrder:extraQty,cost:extraCost,isTopUp:true});
+          total+=extraCost;
+        }
+      }
+    }
+    const allItems=[...g.items,...topUp].sort((a,b)=>b.urgency-a.urgency||(b.cost-a.cost));
+    const reachesMin=total>=minOrder||minOrder===0;
+    const fitsbudget=budgetUsed+total<=settings.budget;
+    if(fitsbudget)budgetUsed+=total;
+    return{...g,items:allItems,total,topUpCount:topUp.length,reachesMin,fitsbudget};
+  }).sort((a,b)=>{
+    // Priorità: urgenza media più alta prima
+    const urgA=a.items.reduce((s,i)=>s+i.urgency,0)/a.items.length;
+    const urgB=b.items.reduce((s,i)=>s+i.urgency,0)/b.items.length;
+    return urgB-urgA;
+  });
+
+  const grandTotal=supplierGroups.reduce((a,g)=>a+g.total,0)+(noSupplier.reduce((a,p)=>a+p.cost,0));
+  const budgetLeft=settings.budget-grandTotal;
+
+  const toggle=(id)=>setExpandedSup(prev=>({...prev,[id]:!prev[id]}));
+
+  return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Parametri */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16,display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-end"}}>
         <div style={{flex:1,minWidth:200}}>
-          <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>⚙️ Parametri</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>⚙️ Parametri ordine</div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Orizzonte</label><select value={horizon} onChange={e=>setHorizon(e.target.value)} style={{...iStyle,minWidth:180}}><option value="1">Copertura 1 mese</option><option value="2">Copertura 2 mesi</option></select></div>
-            <div style={{display:"flex",flexDirection:"column",gap:4}}><label style={{fontSize:11,color:"#A08060"}}>Budget €</label><div style={{display:"flex",gap:6}}><input type="number" value={budget} onChange={e=>setBudget(e.target.value)} style={{...iStyle,width:120}}/><button onClick={saveBudget} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer"}}>Salva</button></div></div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:"#A08060"}}>Orizzonte</label>
+              <select value={horizon} onChange={e=>setHorizon(e.target.value)} style={{...iStyle,minWidth:180}}>
+                <option value="1">Copertura 1 mese</option>
+                <option value="2">Copertura 2 mesi</option>
+              </select>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={{fontSize:11,color:"#A08060"}}>Budget disponibile €</label>
+              <div style={{display:"flex",gap:6}}>
+                <input type="number" value={budget} onChange={e=>setBudget(e.target.value)} style={{...iStyle,width:120}}/>
+                <button onClick={saveBudget} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 12px",fontSize:12,cursor:"pointer"}}>Salva</button>
+              </div>
+            </div>
           </div>
         </div>
-        <div style={{display:"flex",gap:24}}>
-          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Totale ordine</div><div style={{fontSize:20,fontWeight:800,color:"#D96C05"}}>{fmt(totalCost)}</div></div>
-          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Budget rimasto</div><div style={{fontSize:20,fontWeight:800,color:budgetLeft>=0?"#5CB85C":"#E05252"}}>{fmt(budgetLeft)}</div></div>
+        <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
+          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Totale ordini</div><div style={{fontSize:22,fontWeight:800,color:"#D96C05"}}>{fmt(grandTotal)}</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Budget rimasto</div><div style={{fontSize:22,fontWeight:800,color:budgetLeft>=0?"#5CB85C":"#E05252"}}>{fmt(budgetLeft)}</div></div>
+          <div style={{textAlign:"center"}}><div style={{fontSize:11,color:"#A08060"}}>Fornitori coinvolti</div><div style={{fontSize:22,fontWeight:800,color:"#F5EDE3"}}>{supplierGroups.length}</div></div>
         </div>
       </div>
-      {proposals.length===0?<div style={{color:"#A08060",textAlign:"center",padding:30,fontSize:14}}>Nessun riordino necessario o dati insufficienti.</div>:(
-        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-          {prioritized.map(p=>(
-            <div key={p.id} style={{background:p.fits?"#1E2E1E":"#231A12",border:"1px solid "+(p.fits?"#2E5E2E":"#3D2E1E"),borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
-              <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{p.name}</div><div style={{fontSize:11,color:"#A08060"}}>{p.category} · media: {p.avg}/mese · stock: {p.stock}</div></div>
-              <div style={{textAlign:"right",minWidth:90}}><div style={{fontSize:13,fontWeight:700}}>Ordina: {p.toOrder} pz</div></div>
-              <div style={{textAlign:"right",minWidth:80}}><div style={{fontSize:13,fontWeight:700,color:"#E8C44A"}}>{fmt(p.cost)}</div></div>
-              <div style={{fontSize:12,fontWeight:700,color:p.fits?"#5CB85C":"#E05252",minWidth:60,textAlign:"right"}}>{p.fits?"✅ Ok":"⛔ Budget"}</div>
+
+      {/* Legenda urgenza */}
+      <div style={{display:"flex",gap:12,fontSize:11,color:"#A08060",flexWrap:"wrap"}}>
+        <span>🔴 Urgente (&lt;30gg stock)</span>
+        <span>🟡 Medio (30-60gg)</span>
+        <span>🟢 Ok (&gt;60gg)</span>
+        <span>📦 Aggiunto per raggiungere minimo ordine</span>
+      </div>
+
+      {/* Gruppi per fornitore */}
+      {supplierGroups.length===0&&noSupplier.length===0&&(
+        <div style={{color:"#A08060",textAlign:"center",padding:30,fontSize:14}}>Nessun riordino necessario o dati di vendita insufficienti.</div>
+      )}
+
+      {supplierGroups.map(g=>{
+        const minOrder=g.supplier.minOrder||0;
+        const pct=minOrder>0?Math.min(100,(g.total/minOrder)*100):100;
+        const isOpen=expandedSup[g.supplier.id]!==false; // aperto di default
+        const borderColor=!g.reachesMin?"#7A3B0A":!g.fitsbudget?"#5A3A8A":"#2E5E2E";
+        const bgColor=!g.reachesMin?"#2E1A0E":!g.fitsbudget?"#1E1A2E":"#1E2E1E";
+        return(
+          <div key={g.supplier.id} style={{background:bgColor,border:"1px solid "+borderColor,borderRadius:12,overflow:"hidden"}}>
+            {/* Header fornitore */}
+            <div onClick={()=>toggle(g.supplier.id)} style={{padding:"12px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:15,fontWeight:800}}>{g.supplier.name}</span>
+                  {!g.reachesMin&&<span style={{background:"#7A3B0A",color:"#F28C35",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠️ SOTTO MINIMO</span>}
+                  {g.reachesMin&&!g.fitsbudget&&<span style={{background:"#3D2E1E",color:"#E05252",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>⛔ FUORI BUDGET</span>}
+                  {g.reachesMin&&g.fitsbudget&&<span style={{background:"#1E3A1E",color:"#5CB85C",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>✅ OK</span>}
+                  {g.topUpCount>0&&<span style={{background:"#231A12",color:"#A08060",borderRadius:20,padding:"2px 8px",fontSize:10}}>+{g.topUpCount} aggiunti per minimo</span>}
+                </div>
+                {/* Barra progresso verso minimo */}
+                {minOrder>0&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,background:"#1A1410",borderRadius:20,height:6,overflow:"hidden"}}>
+                      <div style={{background:g.reachesMin?"#5CB85C":"#D96C05",height:"100%",width:pct+"%",borderRadius:20,transition:"width 0.5s"}}/>
+                    </div>
+                    <span style={{fontSize:11,color:"#A08060",whiteSpace:"nowrap"}}>{fmt(g.total)} / {fmt(minOrder)} min.</span>
+                  </div>
+                )}
+                {minOrder===0&&<span style={{fontSize:11,color:"#5CB85C"}}>Nessun minimo d'ordine</span>}
+              </div>
+              <div style={{textAlign:"right",minWidth:80}}>
+                <div style={{fontSize:18,fontWeight:900,color:"#D96C05"}}>{fmt(g.total)}</div>
+                <div style={{fontSize:11,color:"#A08060"}}>{g.items.length} prodotti</div>
+              </div>
+              <div style={{fontSize:18,color:"#A08060"}}>{isOpen?"▲":"▼"}</div>
             </div>
-          ))}
+
+            {/* Lista prodotti del fornitore */}
+            {isOpen&&(
+              <div style={{borderTop:"1px solid "+borderColor,padding:"8px 16px 12px"}}>
+                {g.items.map(p=>{
+                  const urg=p.urgency===3?"🔴":p.urgency===2?"🟡":"🟢";
+                  return(
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #1A1410"}}>
+                      <span style={{fontSize:13}}>{urg}</span>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:p.isTopUp?400:600,color:p.isTopUp?"#A08060":"#F5EDE3"}}>
+                          {p.isTopUp?"📦 ":""}{p.name}
+                        </div>
+                        <div style={{fontSize:10,color:"#A08060"}}>
+                          Media: {p.avg}/mese · Stock: {p.stock} · {p.daysOfStock<999?p.daysOfStock+"gg rimanenti":"nessuna vendita"}
+                        </div>
+                      </div>
+                      <div style={{textAlign:"right",minWidth:80}}>
+                        <div style={{fontSize:12,fontWeight:700}}>Ordina: {p.toOrder} pz</div>
+                        <div style={{fontSize:11,color:"#E8C44A"}}>{fmt(p.cost)}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Prodotti senza fornitore */}
+      {noSupplier.length>0&&(
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:"#A08060"}}>⚠️ Prodotti senza fornitore assegnato</div>
+              <div style={{fontSize:11,color:"#A08060",marginTop:2}}>Assegna il fornitore nella tab Prodotti o Fornitori</div>
+            </div>
+            <div style={{fontSize:16,fontWeight:800,color:"#D96C05"}}>{fmt(noSupplier.reduce((a,p)=>a+p.cost,0))}</div>
+          </div>
+          <div style={{borderTop:"1px solid #3D2E1E",padding:"8px 16px 12px"}}>
+            {noSupplier.map(p=>(
+              <div key={p.id} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #1A1410",fontSize:12}}>
+                <span>{p.name}</span>
+                <span style={{color:"#A08060",paddingRight:10}}>×{p.toOrder}</span>
+                <span style={{color:"#E8C44A",fontWeight:600}}>{fmt(p.cost)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FORNITORI ────────────────────────────────────────────────────────────────
+function Fornitori({suppliers,setSuppliers,products,setProducts}){
+  const empty={name:"",minOrder:"",brands:""};
+  const [form,setForm]=useState(empty);
+  const [editId,setEditId]=useState(null);
+  const [selSup,setSelSup]=useState(null);
+
+  const handleSave=()=>{
+    if(!form.name)return;
+    const entry={name:form.name,minOrder:parseFloat(form.minOrder)||0,brands:form.brands?form.brands.split(",").map(b=>b.trim()).filter(Boolean):[]};
+    if(editId){setSuppliers(prev=>prev.map(s=>s.id===editId?{...s,...entry}:s));setEditId(null);}
+    else setSuppliers(prev=>[...prev,{...entry,id:uid()}]);
+    setForm(empty);
+  };
+
+  const startEdit=(s)=>{setForm({name:s.name,minOrder:s.minOrder.toString(),brands:(s.brands||[]).join(", ")});setEditId(s.id);};
+
+  // Assegna fornitore a prodotto
+  const assignSupplier=(productId,supplierId)=>{
+    setProducts(prev=>prev.map(p=>p.id===productId?{...p,distributorId:supplierId||null}:p));
+  };
+
+  // Trova fornitore automatico per prodotto
+  const autoSupplier=(p)=>{
+    if(p.distributorId)return suppliers.find(s=>s.id===p.distributorId);
+    return suppliers.find(s=>s.brands&&s.brands.some(b=>p.supplier&&p.supplier.toLowerCase().includes(b.toLowerCase())));
+  };
+
+  const unassigned=products.filter(p=>!autoSupplier(p));
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Form */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>{editId?"✏️ Modifica Fornitore":"➕ Nuovo Fornitore"}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 2fr auto",gap:10,alignItems:"flex-end"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Nome fornitore *</label>
+            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="es. Global Pet" style={iStyle}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Minimo ordine €</label>
+            <input type="number" value={form.minOrder} onChange={e=>setForm(f=>({...f,minOrder:e.target.value}))} placeholder="0 = nessun minimo" style={iStyle}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Brand associati (separati da virgola)</label>
+            <input value={form.brands} onChange={e=>setForm(f=>({...f,brands:e.target.value}))} placeholder="es. Welldog, Primordial" style={iStyle}/>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={handleSave} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 14px",fontSize:13,fontWeight:700,cursor:"pointer"}}>{editId?"Salva":"Aggiungi"}</button>
+            {editId&&<button onClick={()=>{setForm(empty);setEditId(null);}} style={{background:"#3D2E1E",color:"#F5EDE3",border:"none",borderRadius:8,padding:"9px 10px",fontSize:13,cursor:"pointer"}}>✕</button>}
+          </div>
+        </div>
+      </div>
+
+      {/* Lista fornitori */}
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {suppliers.map(s=>{
+          const prodCount=products.filter(p=>autoSupplier(p)?.id===s.id).length;
+          return(
+            <div key={s.id} style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:700}}>{s.name}</div>
+                <div style={{fontSize:11,color:"#A08060"}}>
+                  Minimo: {s.minOrder>0?fmt(s.minOrder):"Nessun minimo"} · {prodCount} prodotti · Brand: {(s.brands||[]).join(", ")||"—"}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                <button onClick={()=>startEdit(s)} style={{background:"#3D2E1E",border:"none",color:"#D96C05",borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>✏️</button>
+                <button onClick={()=>setSuppliers(prev=>prev.filter(x=>x.id!==s.id))} style={{background:"#3D2E1E",border:"none",color:"#E05252",borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>🗑</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Prodotti senza fornitore */}
+      {unassigned.length>0&&(
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#E8C44A",marginBottom:10}}>⚠️ {unassigned.length} prodotti senza fornitore — assegna manualmente</div>
+          <div style={{maxHeight:300,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+            {unassigned.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid #3D2E1E"}}>
+                <div style={{flex:1,fontSize:12}}>{p.name} <span style={{color:"#A08060"}}>({p.category})</span></div>
+                <select value={p.distributorId||""} onChange={e=>assignSupplier(p.id,e.target.value)} style={{...iStyle,width:160,padding:"4px 8px",fontSize:12}}>
+                  <option value="">-- Seleziona --</option>
+                  {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -1318,7 +1613,9 @@ function App(){
   const [expenses,setExpenses]=useState(()=>load(KEYS.expenses)||[]);
   const [settings,setSettings]=useState(()=>load(KEYS.settings)||{budget:2000});
   const [customers,setCustomers]=useState(()=>load("apc_customers")||[]);
+  const [suppliers,setSuppliers]=useState(()=>load("apc_suppliers")||SUPPLIERS_DEFAULT);
   useEffect(()=>save(KEYS.products,products),[products]);
+  useEffect(()=>save("apc_suppliers",suppliers),[suppliers]);
   useEffect(()=>save(KEYS.sales,sales),[sales]);
   useEffect(()=>save(KEYS.expenses,expenses),[expenses]);
   useEffect(()=>save(KEYS.settings,settings),[settings]);
@@ -1339,6 +1636,7 @@ function App(){
     {id:"prodotti",label:"Prodotti",icon:"📦"},
     {id:"spese",label:"Spese",icon:"💳"},
     {id:"ordini",label:"Proposta Ordini",icon:"📋"},
+    {id:"fornitori",label:"Fornitori",icon:"🏭"},
     {id:"report",label:"Report",icon:"📊"},
     {id:"fedelta",label:"Fedeltà",icon:"⭐"},
     {id:"backup",label:"Backup",icon:"💾"},
@@ -1360,7 +1658,8 @@ function App(){
         {tab==="cassa"&&<CassaConFedelta products={products} setProducts={setProducts} sales={sales} setSales={setSales} customers={customers} setCustomers={setCustomers}/>}
         {tab==="prodotti"&&<Prodotti products={products} setProducts={setProducts}/>}
         {tab==="spese"&&<Spese expenses={expenses} setExpenses={setExpenses}/>}
-        {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings}/>}
+        {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings} suppliers={suppliers} setSuppliers={setSuppliers}/>}
+        {tab==="fornitori"&&<Fornitori suppliers={suppliers} setSuppliers={setSuppliers} products={products} setProducts={setProducts}/>}
         {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct}/>}
         {tab==="fedelta"&&<Fedelta customers={customers} setCustomers={setCustomers} sales={sales}/>}
         {tab==="backup"&&<Backup products={products} sales={sales} expenses={expenses} settings={settings} setProducts={setProducts} setSales={setSales} setExpenses={setExpenses} setSettings={setSettings}/>}
