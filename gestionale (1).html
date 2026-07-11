@@ -47,7 +47,7 @@ const SUPPLIERS_DEFAULT = [
 
 const fmt = (n) => new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"}).format(n||0);
 const nowISO = () => new Date().toISOString();
-const thisMonth = () => new Date().toISOString().slice(0,7);
+const thisMonth = () => { const n=new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; };
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const scorporaIva = (prezzoIvato, aliquota) => {
   const imponibile = prezzoIvato / (1 + aliquota / 100);
@@ -635,16 +635,23 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
   const saveBudget=()=>setSettings(s=>({...s,budget:parseFloat(budget)||0}));
 
   const now=new Date();
-  // Mesi: corrente + ultimi 3 — il mese in corso conta doppio perché è la vendita più fresca
-  const currentMonth=now.toISOString().slice(0,7);
-  const lastMonths=[0,1,2,3].map(i=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
+  // USA DATA LOCALE (non UTC) per evitare sfasamenti di fuso orario
+  const localYear=now.getFullYear();
+  const localMonth=now.getMonth(); // 0-based
+  const localDay=now.getDate();
+  const localMonthStr=(y,m)=>`${y}-${String(m+1).padStart(2,'0')}`;
+  const currentMonth=localMonthStr(localYear,localMonth);
+  const lastMonths=[0,1,2,3].map(i=>{
+    const d=new Date(localYear,localMonth-i,1);
+    return localMonthStr(d.getFullYear(),d.getMonth());
+  });
   // Pesi: mese corrente 0.45, -1 mese 0.30, -2 mese 0.15, -3 mese 0.10
   const weights=[0.45,0.30,0.15,0.10];
   const salesMaps=lastMonths.map(m=>getSalesByProduct(m));
 
   // Giorni trascorsi nel mese corrente (per estrapolazione)
-  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const daysPassed=now.getDate();
+  const daysInMonth=new Date(localYear,localMonth+1,0).getDate();
+  const daysPassed=localDay;
   const monthRatio=daysInMonth/Math.max(daysPassed,1); // fattore di proiezione mese corrente
 
   // Media ponderata per prodotto con proiezione mese corrente
