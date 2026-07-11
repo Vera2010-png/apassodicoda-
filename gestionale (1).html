@@ -775,6 +775,69 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
         <span>📦 Aggiunto per raggiungere minimo ordine</span>
       </div>
 
+      {/* DEBUG PANEL */}
+      {(()=>{
+        const [showDebug,setShowDebug]=React.useState(false);
+        const [debugSearch,setDebugSearch]=React.useState("");
+        const debugProducts=products.filter(p=>debugSearch?p.name.toLowerCase().includes(debugSearch.toLowerCase()):true).slice(0,20).map(p=>{
+          const months=lastMonths.map((m,i)=>{
+            const raw=salesMaps[i][p.id]?.qty||0;
+            const projected=i===0&&raw>0?+(raw*monthRatio).toFixed(1):raw;
+            return{month:m,raw,projected,weight:weights[i]};
+          });
+          const hasAnySales=months.some(m=>m.raw>0);
+          return{...p,months,avg:+(avgSales[p.id]||0).toFixed(2),hasAnySales};
+        });
+        return(
+          <div style={{background:"#1A1410",border:"1px dashed #3D2E1E",borderRadius:10,padding:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:showDebug?10:0}}>
+              <button onClick={()=>setShowDebug(d=>!d)} style={{background:"#3D2E1E",color:"#A08060",border:"none",borderRadius:6,padding:"4px 12px",fontSize:12,cursor:"pointer"}}>
+                🔍 {showDebug?"Nascondi":"Mostra"} pannello diagnostica vendite
+              </button>
+              <span style={{fontSize:11,color:"#A08060"}}>Mesi analizzati: {lastMonths.join(", ")} · Oggi: giorno {daysPassed}/{daysInMonth} · Proiezione ×{monthRatio.toFixed(2)}</span>
+            </div>
+            {showDebug&&(
+              <div>
+                <input value={debugSearch} onChange={e=>setDebugSearch(e.target.value)} placeholder="Cerca prodotto per nome..." style={{...iStyle,marginBottom:8,fontSize:12}}/>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead>
+                      <tr style={{color:"#A08060",borderBottom:"1px solid #3D2E1E"}}>
+                        <th style={{textAlign:"left",padding:"4px 8px"}}>Prodotto</th>
+                        {lastMonths.map((m,i)=><th key={m} style={{textAlign:"right",padding:"4px 8px"}}>{m}<br/>(raw/proj)</th>)}
+                        <th style={{textAlign:"right",padding:"4px 8px"}}>Media</th>
+                        <th style={{textAlign:"right",padding:"4px 8px"}}>Stock</th>
+                        <th style={{textAlign:"right",padding:"4px 8px"}}>Da ord.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {debugProducts.map(p=>{
+                        const needed=p.avg>0?Math.ceil(p.avg*h):p.stock===0?1:0;
+                        const toOrd=Math.max(0,needed-p.stock);
+                        return(
+                          <tr key={p.id} style={{borderBottom:"1px solid #1A1410",background:p.hasAnySales?"#1E2A1E":"transparent"}}>
+                            <td style={{padding:"4px 8px",color:p.hasAnySales?"#F5EDE3":"#A08060"}}>{p.name}</td>
+                            {p.months.map((m,i)=>(
+                              <td key={i} style={{textAlign:"right",padding:"4px 8px",color:m.raw>0?"#5CB85C":"#A08060"}}>
+                                {m.raw>0?`${m.raw}/${m.projected}`:"—"}
+                              </td>
+                            ))}
+                            <td style={{textAlign:"right",padding:"4px 8px",color:"#D96C05",fontWeight:700}}>{p.avg}</td>
+                            <td style={{textAlign:"right",padding:"4px 8px",color:p.stock===0?"#E05252":"#F5EDE3"}}>{p.stock}</td>
+                            <td style={{textAlign:"right",padding:"4px 8px",color:toOrd>0?"#D96C05":"#A08060",fontWeight:toOrd>0?700:400}}>{toOrd>0?toOrd:"—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{fontSize:10,color:"#A08060",marginTop:6}}>Mostrando max 20 prodotti. I prodotti con vendite sono evidenziati in verde.</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Gruppi per fornitore */}
       {supplierGroups.length===0&&noSupplier.length===0&&(
         <div style={{color:"#A08060",textAlign:"center",padding:30,fontSize:14}}>Nessun riordino necessario o dati di vendita insufficienti.</div>
