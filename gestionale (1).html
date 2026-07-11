@@ -635,16 +635,28 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
   const saveBudget=()=>setSettings(s=>({...s,budget:parseFloat(budget)||0}));
 
   const now=new Date();
-  // Ultimi 3 mesi con peso stagionale: mese più recente vale di più
-  const lastMonths=[0,1,2].map(i=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
-  const weights=[0.5,0.33,0.17]; // più recente pesa di più
+  // Mesi: corrente + ultimi 3 — il mese in corso conta doppio perché è la vendita più fresca
+  const currentMonth=now.toISOString().slice(0,7);
+  const lastMonths=[0,1,2,3].map(i=>{const d=new Date(now.getFullYear(),now.getMonth()-i,1);return d.toISOString().slice(0,7);});
+  // Pesi: mese corrente 0.45, -1 mese 0.30, -2 mese 0.15, -3 mese 0.10
+  const weights=[0.45,0.30,0.15,0.10];
   const salesMaps=lastMonths.map(m=>getSalesByProduct(m));
 
-  // Media ponderata per prodotto
+  // Giorni trascorsi nel mese corrente (per estrapolazione)
+  const daysInMonth=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  const daysPassed=now.getDate();
+  const monthRatio=daysInMonth/Math.max(daysPassed,1); // fattore di proiezione mese corrente
+
+  // Media ponderata per prodotto con proiezione mese corrente
   const avgSales={};
   products.forEach(p=>{
     let weightedSum=0,weightSum=0;
-    salesMaps.forEach((m,i)=>{const qty=m[p.id]?.qty||0;if(qty>0){weightedSum+=qty*weights[i];weightSum+=weights[i];}});
+    salesMaps.forEach((m,i)=>{
+      let qty=m[p.id]?.qty||0;
+      // Proietta le vendite del mese corrente a fine mese
+      if(i===0&&qty>0) qty=qty*monthRatio;
+      if(qty>0){weightedSum+=qty*weights[i];weightSum+=weights[i];}
+    });
     avgSales[p.id]=weightSum>0?weightedSum/weightSum:0;
   });
 
@@ -653,7 +665,6 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
   // Funzione per trovare il fornitore di un prodotto
   const getSupplierForProduct=(p)=>{
     if(p.distributorId){return suppliers.find(s=>s.id===p.distributorId)||null;}
-    // Tenta match automatico sul brand
     const sup=suppliers.find(s=>s.brands&&s.brands.some(b=>p.supplier&&p.supplier.toLowerCase().includes(b.toLowerCase())));
     return sup||null;
   };
@@ -661,13 +672,16 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
   // Calcola fabbisogno per ogni prodotto
   const allNeeds=products.map(p=>{
     const avg=avgSales[p.id]||0;
-    // Urgenza: giorni rimanenti di stock
-    const daysOfStock=avg>0?(p.stock/(avg/30)):999;
-    const needed=Math.ceil(avg*h);
+    const stockZero=p.stock===0;
+    const daysOfStock=avg>0?(p.stock/(avg/30)):stockZero?0:999;
+    // Se stock=0 ordina almeno 1 unità anche senza storico vendite, altrimenti usa la media
+    const needed=avg>0?Math.ceil(avg*h):(stockZero?1:0);
     const toOrder=Math.max(0,needed-p.stock);
     const cost=toOrder*p.buyPrice;
     const sup=getSupplierForProduct(p);
-    return{...p,avg:avg.toFixed(1),needed,toOrder,cost,supplier:sup,daysOfStock:Math.round(daysOfStock),urgency:daysOfStock<30?3:daysOfStock<60?2:1};
+    // Urgenza: CRITICO se stock=0, URGENTE se <30gg, MEDIO se <60gg, OK altrimenti
+    const urgency=stockZero?4:daysOfStock<30?3:daysOfStock<60?2:1;
+    return{...p,avg:avg.toFixed(1),needed,toOrder,cost,supplier:sup,daysOfStock:Math.round(daysOfStock),urgency,stockZero};
   }).filter(p=>p.toOrder>0);
 
   // Raggruppa per fornitore
@@ -754,6 +768,7 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
 
       {/* Legenda urgenza */}
       <div style={{display:"flex",gap:12,fontSize:11,color:"#A08060",flexWrap:"wrap"}}>
+        <span>🆘 Stock ZERO</span>
         <span>🔴 Urgente (&lt;30gg stock)</span>
         <span>🟡 Medio (30-60gg)</span>
         <span>🟢 Ok (&gt;60gg)</span>
@@ -805,7 +820,7 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
             {isOpen&&(
               <div style={{borderTop:"1px solid "+borderColor,padding:"8px 16px 12px"}}>
                 {g.items.map(p=>{
-                  const urg=p.urgency===3?"🔴":p.urgency===2?"🟡":"🟢";
+                  const urg=p.urgency===4?"🆘":p.urgency===3?"🔴":p.urgency===2?"🟡":"🟢";
                   return(
                     <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #1A1410"}}>
                       <span style={{fontSize:13}}>{urg}</span>
@@ -814,7 +829,7 @@ function Ordini({products,getSalesByProduct,settings,setSettings,suppliers,setSu
                           {p.isTopUp?"📦 ":""}{p.name}
                         </div>
                         <div style={{fontSize:10,color:"#A08060"}}>
-                          Media: {p.avg}/mese · Stock: {p.stock} · {p.daysOfStock<999?p.daysOfStock+"gg rimanenti":"nessuna vendita"}
+                          Media: {p.avg}/mese · Stock: {p.stock} · {p.stockZero?"⚠️ ESAURITO":p.daysOfStock<999?p.daysOfStock+"gg rimanenti":"nessuna vendita"}
                         </div>
                       </div>
                       <div style={{textAlign:"right",minWidth:80}}>
