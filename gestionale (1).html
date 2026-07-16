@@ -80,12 +80,14 @@ function Dashboard({products,sales,expenses,getSalesThisMonth,getSalesByProduct}
   const salesMap=getSalesByProduct(m);
   let totalLordo=0,totalImponibile=0,totalIvaCollettata=0,totalCostGoods=0,totalSconti=0;
   salesMonth.forEach(s=>{
-    const lordo=s.qty*s.sellPrice;
+    const lordo=s.finalPrice||(s.qty*s.sellPrice);
     const {imponibile,iva}=scorporaIva(lordo,s.iva||22);
+    // Scorporo IVA anche dal prezzo d'acquisto (buyPrice è IVA inclusa)
+    const buyNetto=s.buyPrice/(1+(s.iva||22)/100);
     totalLordo+=lordo;
     totalImponibile+=imponibile;
     totalIvaCollettata+=iva;
-    totalCostGoods+=s.qty*s.buyPrice;
+    totalCostGoods+=s.qty*buyNetto;
     totalSconti+=(s.discountAmount||0);
   });
   const grossMargin=totalImponibile-totalCostGoods;
@@ -1048,9 +1050,11 @@ function Report({products,sales,expenses,getSalesByProduct}){
   monthSales.forEach(s=>{
     const lordo=s.finalPrice||s.qty*s.sellPrice;
     const {imponibile,iva}=scorporaIva(lordo,s.iva||22);
+    // Scorporo IVA anche dal prezzo d'acquisto (buyPrice è IVA inclusa)
+    const buyNetto=s.buyPrice/(1+(s.iva||22)/100);
     totalLordo+=lordo;totalImponibile+=imponibile;
     if((s.iva||22)===10)totalIva10+=iva;else totalIva22+=iva;
-    totalCostGoods+=s.qty*s.buyPrice;
+    totalCostGoods+=s.qty*buyNetto;
     totalSconti+=(s.discountAmount||0);
   });
   const totalIva=totalIva22+totalIva10;
@@ -1058,7 +1062,15 @@ function Report({products,sales,expenses,getSalesByProduct}){
   const totalExpenses=monthExpenses.reduce((a,e)=>a+e.amount,0);
   const netResult=grossMargin-totalExpenses;
   const marginPct=totalImponibile>0?(grossMargin/totalImponibile*100).toFixed(1):0;
-  const productBreakdown=Object.entries(salesMap).map(([id,d])=>({product:products.find(p=>p.id===id),...d})).filter(x=>x.product).sort((a,b)=>b.revenue-a.revenue);
+  // Ricalcola cost con IVA scorporata per breakdown prodotti
+  const salesMapNetto=getSalesByProduct(selMonth,true);
+  const productBreakdown=Object.entries(salesMap).map(([id,d])=>{
+    const product=products.find(p=>p.id===id);
+    if(!product)return null;
+    const iva=product.iva||22;
+    const costNetto=(d.cost||0)/(1+iva/100);
+    return{product,...d,costNetto};
+  }).filter(Boolean).sort((a,b)=>b.revenue-a.revenue);
   const stockValue=products.reduce((a,p)=>a+p.stock*p.buyPrice,0);
   const stockRetailValue=products.reduce((a,p)=>a+p.stock*p.sellPrice,0);
   return (
@@ -1073,7 +1085,7 @@ function Report({products,sales,expenses,getSalesByProduct}){
           {label:"Incassato (IVA inclusa)",value:fmt(totalLordo),color:"#D96C05"},
           {label:"IVA collettata",value:"- "+fmt(totalIva),color:"#A78BFA"},
           {label:"Fatturato netto (imponibile)",value:fmt(totalImponibile),color:"#F28C35",bold:true},
-          {label:"Costo del venduto",value:"- "+fmt(totalCostGoods),color:"#E05252"},
+          {label:"Costo del venduto (impon.)",value:"- "+fmt(totalCostGoods),color:"#E05252"},
           ...(totalSconti>0?[{label:"Sconti applicati",value:fmt(totalSconti),color:"#E05252"}]:[]),
           {label:"Margine lordo",value:fmt(grossMargin)+" ("+marginPct+"%)",color:grossMargin>=0?"#5CB85C":"#E05252",bold:true},
           {label:"Spese fisse",value:"- "+fmt(totalExpenses),color:"#E8C44A"},
@@ -1098,7 +1110,7 @@ function Report({products,sales,expenses,getSalesByProduct}){
           <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>🏷️ Vendite per Prodotto</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6}}><span>Prodotto</span><span style={{textAlign:"right"}}>Qtà</span><span style={{textAlign:"right"}}>IVA</span><span style={{textAlign:"right"}}>Ricavo netto</span><span style={{textAlign:"right"}}>Margine</span></div>
           {productBreakdown.map(({product,qty,revenue:rev,cost})=>{
-            const iva=product.iva||22;const rn=rev/(1+iva/100);const cn=cost/(1+iva/100);
+            const iva=product.iva||22;const rn=rev/(1+iva/100);const cn=costNetto||cost/(1+iva/100);
             return(<div key={product.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}><span>{product.name}</span><span style={{textAlign:"right",color:"#A08060"}}>{qty}</span><span style={{textAlign:"right",color:"#A78BFA"}}>{iva}%</span><span style={{textAlign:"right",color:"#D96C05",fontWeight:600}}>{fmt(rn)}</span><span style={{textAlign:"right",color:"#5CB85C",fontWeight:600}}>{fmt(rn-cn)}</span></div>);
           })}
         </div>
