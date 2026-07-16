@@ -1141,100 +1141,141 @@ function Report({products,sales,expenses,getSalesByProduct,purchaseOrders}){
   const salesMap=getSalesByProduct(selMonth);
   const monthSales=sales.filter(s=>s.date.startsWith(selMonth));
   const monthExpenses=expenses.filter(e=>e.month===selMonth);
+
   let totalLordo=0,totalImponibile=0,totalIva22=0,totalIva10=0,totalCostGoods=0,totalSconti=0;
   monthSales.forEach(s=>{
-    const lordo=s.finalPrice||s.qty*s.sellPrice;
+    const lordo=s.finalPrice||(s.qty*s.sellPrice);
     const {imponibile,iva}=scorporaIva(lordo,s.iva||22);
-    // Scorporo IVA anche dal prezzo d'acquisto (buyPrice è IVA inclusa)
     const buyNetto=s.buyPrice/(1+(s.iva||22)/100);
-    totalLordo+=lordo;totalImponibile+=imponibile;
+    totalLordo+=lordo;
+    totalImponibile+=imponibile;
     if((s.iva||22)===10)totalIva10+=iva;else totalIva22+=iva;
     totalCostGoods+=s.qty*buyNetto;
     totalSconti+=(s.discountAmount||0);
   });
+
   const totalIva=totalIva22+totalIva10;
   const grossMargin=totalImponibile-totalCostGoods;
   const totalExpenses=monthExpenses.reduce((a,e)=>a+e.amount,0);
-  // Ordini pagati nel mese selezionato
-  const monthPurchases=(purchaseOrders||[]).filter(o=>o.date.slice(0,7)===selMonth);
+  const monthPurchases=(purchaseOrders||[]).filter(o=>o.date&&o.date.slice(0,7)===selMonth);
   const totalPurchases=monthPurchases.reduce((a,o)=>a+o.amount,0);
   const netResult=grossMargin-totalExpenses;
-  // Flusso di cassa reale = incassato - ordini pagati - spese
   const cashFlow=totalLordo-totalPurchases-totalExpenses;
   const marginPct=totalImponibile>0?(grossMargin/totalImponibile*100).toFixed(1):0;
+
   const productBreakdown=Object.entries(salesMap).map(([id,d])=>{
     const product=products.find(p=>p.id===id);
     if(!product)return null;
     const iva=product.iva||22;
-    const costNetto=(d.cost||0)/(1+iva/100);
-    return{product,...d,costNetto};
-  }).filter(Boolean).sort((a,b)=>b.revenue-a.revenue);
+    const revNetto=d.revenue/(1+iva/100);
+    const costNetto=d.cost/(1+iva/100);
+    return{product,qty:d.qty,revNetto,costNetto,margine:revNetto-costNetto};
+  }).filter(Boolean).sort((a,b)=>b.revNetto-a.revNetto);
+
   const stockValue=products.reduce((a,p)=>a+p.stock*p.buyPrice,0);
   const stockRetailValue=products.reduce((a,p)=>a+p.stock*p.sellPrice,0);
-  return (
+
+  const ceRows=[
+    {label:"💰 Incassato (IVA inclusa)",value:fmt(totalLordo),color:"#D96C05"},
+    {label:"🏛️ IVA collettata (da versare)",value:"- "+fmt(totalIva),color:"#A78BFA"},
+    {label:"📊 Fatturato netto (imponibile)",value:fmt(totalImponibile),color:"#F28C35",bold:true},
+    {label:"📦 Costo del venduto (netto)",value:"- "+fmt(totalCostGoods),color:"#E05252"},
+  ];
+  if(totalSconti>0)ceRows.push({label:"🏷️ Sconti applicati",value:"- "+fmt(totalSconti),color:"#E05252"});
+  ceRows.push({label:"📈 Margine commerciale",value:fmt(grossMargin)+" ("+marginPct+"%)",color:grossMargin>=0?"#5CB85C":"#E05252",bold:true});
+  ceRows.push({label:"💳 Spese fisse",value:"- "+fmt(totalExpenses),color:"#E8C44A"});
+  ceRows.push({label:"🏁 Risultato gestionale",value:fmt(netResult),sub:"margine - spese fisse",color:netResult>=0?"#5CB85C":"#E05252",bold:true,big:true});
+  if(totalPurchases>0){
+    ceRows.push({sep:true});
+    ceRows.push({label:"📦 Ordini pagati questo mese",value:"- "+fmt(totalPurchases),color:"#E05252"});
+    ceRows.push({label:"💵 Flusso di cassa reale",value:fmt(cashFlow),sub:"incassato - ordini - spese",color:cashFlow>=0?"#5CB85C":"#E05252",bold:true,big:true});
+  }
+
+  return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",gap:10,alignItems:"center"}}>
         <label style={{fontSize:12,color:"#A08060"}}>Mese:</label>
-        <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>{months.map(m=><option key={m}>{m}</option>)}</select>
+        <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>
+          {months.map(m=><option key={m}>{m}</option>)}
+        </select>
       </div>
+
+      {/* Conto economico */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
         <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>📊 Conto Economico — {selMonth}</div>
-        {[
-          {label:"💰 Incassato (IVA inclusa)",value:fmt(totalLordo),color:"#D96C05"},
-          {label:"🏛️ IVA collettata (da versare)",value:"- "+fmt(totalIva),color:"#A78BFA"},
-          {label:"📊 Fatturato netto (imponibile)",value:fmt(totalImponibile),color:"#F28C35",bold:true},
-          {label:"📦 Costo del venduto (impon.)",value:"- "+fmt(totalCostGoods),color:"#E05252"},
-          ...(totalSconti>0?[{label:"🏷️ Sconti applicati",value:"- "+fmt(totalSconti),color:"#E05252"}]:[]),
-          {label:"📈 Margine commerciale",value:fmt(grossMargin)+" ("+marginPct+"%)",color:grossMargin>=0?"#5CB85C":"#E05252",bold:true},
-          {label:"💳 Spese fisse",value:"- "+fmt(totalExpenses),color:"#E8C44A"},
-          {label:"🏁 Risultato gestionale",value:fmt(netResult),sub:"margine - spese fisse",color:netResult>=0?"#5CB85C":"#E05252",bold:true,big:true},
-          ...(totalPurchases>0?[
-            {label:"",value:"",sep:true},
-            {label:"📦 Ordini pagati questo mese",value:"- "+fmt(totalPurchases),color:"#E05252"},
-            {label:"💵 Flusso di cassa reale",value:fmt(cashFlow),sub:"incassato - ordini - spese",color:cashFlow>=0?"#5CB85C":"#E05252",bold:true,big:true},
-          ]:[]),
-        ].map((row,i,arr)=>
+        {ceRows.map((row,i)=>
           row.sep
-            ?<div key={i} style={{borderTop:"2px dashed #3D2E1E",margin:"4px 0"}}/>
-            :(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<arr.length-1&&!arr[i+1]?.sep?"1px solid #3D2E1E":"none"}}>
-            <div>
-              <div style={{fontSize:row.big?15:13,fontWeight:row.bold?700:400}}>{row.label}</div>
-              {row.sub&&<div style={{fontSize:10,color:"#A08060"}}>{row.sub}</div>}
+            ?<div key={i} style={{borderTop:"2px dashed #3D2E1E",margin:"6px 0"}}/>
+            :<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<ceRows.length-1?"1px solid #3D2E1E":"none"}}>
+              <div>
+                <div style={{fontSize:row.big?15:13,fontWeight:row.bold?700:400}}>{row.label}</div>
+                {row.sub&&<div style={{fontSize:10,color:"#A08060"}}>{row.sub}</div>}
+              </div>
+              <span style={{fontSize:row.big?16:13,fontWeight:row.bold?800:600,color:row.color}}>{row.value}</span>
             </div>
-            <span style={{fontSize:row.big?16:13,fontWeight:row.bold?800:600,color:row.color}}>{row.value}</span>
-          </div>)
         )}
       </div>
+
+      {/* Riepilogo IVA */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:14,fontWeight:700,color:"#A78BFA",marginBottom:10}}>🏛️ Riepilogo IVA</div>
+        <div style={{fontSize:14,fontWeight:700,color:"#A78BFA",marginBottom:10}}>🏛️ Riepilogo IVA — {selMonth}</div>
         <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-          {totalIva22>0&&<div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>IVA 22%</div><div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva22)}</div></div>}
-          {totalIva10>0&&<div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>IVA 10% (BARF)</div><div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva10)}</div></div>}
-          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Totale da versare</div><div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva)}</div></div>
+          {totalIva22>0&&<div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:11,color:"#A08060"}}>IVA 22%</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva22)}</div>
+          </div>}
+          {totalIva10>0&&<div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:11,color:"#A08060"}}>IVA 10% (BARF)</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva10)}</div>
+          </div>}
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Totale da versare</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#A78BFA"}}>{fmt(totalIva)}</div>
+          </div>
         </div>
       </div>
+
+      {/* Vendite per prodotto */}
       {productBreakdown.length>0&&(
         <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
           <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>🏷️ Vendite per Prodotto</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6}}><span>Prodotto</span><span style={{textAlign:"right"}}>Qtà</span><span style={{textAlign:"right"}}>IVA</span><span style={{textAlign:"right"}}>Ricavo netto</span><span style={{textAlign:"right"}}>Margine</span></div>
-          {productBreakdown.map(({product,qty,revenue:rev,cost})=>{
-            const iva=product.iva||22;const rn=rev/(1+iva/100);const cn=costNetto||(cost/(1+iva/100));
-            return(<div key={product.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}><span>{product.name}</span><span style={{textAlign:"right",color:"#A08060"}}>{qty}</span><span style={{textAlign:"right",color:"#A78BFA"}}>{iva}%</span><span style={{textAlign:"right",color:"#D96C05",fontWeight:600}}>{fmt(rn)}</span><span style={{textAlign:"right",color:"#5CB85C",fontWeight:600}}>{fmt(rn-cn)}</span></div>);
-          })}
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6}}>
+            <span>Prodotto</span><span style={{textAlign:"right"}}>Qtà</span><span style={{textAlign:"right"}}>IVA</span><span style={{textAlign:"right"}}>Ricavo netto</span><span style={{textAlign:"right"}}>Margine</span>
+          </div>
+          {productBreakdown.map(({product,qty,revNetto,margine})=>(
+            <div key={product.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}>
+              <span>{product.name}</span>
+              <span style={{textAlign:"right",color:"#A08060"}}>{qty}</span>
+              <span style={{textAlign:"right",color:"#A78BFA"}}>{product.iva||22}%</span>
+              <span style={{textAlign:"right",color:"#D96C05",fontWeight:600}}>{fmt(revNetto)}</span>
+              <span style={{textAlign:"right",color:margine>=0?"#5CB85C":"#E05252",fontWeight:600}}>{fmt(margine)}</span>
+            </div>
+          ))}
         </div>
       )}
+
+      {/* Valore magazzino */}
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
         <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>📦 Valore Magazzino</div>
         <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Costo acquisto</div><div style={{fontSize:18,fontWeight:800,color:"#E8C44A"}}>{fmt(stockValue)}</div></div>
-          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Valore vendita</div><div style={{fontSize:18,fontWeight:800,color:"#D96C05"}}>{fmt(stockRetailValue)}</div></div>
-          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}><div style={{fontSize:11,color:"#A08060"}}>Margine potenziale</div><div style={{fontSize:18,fontWeight:800,color:"#5CB85C"}}>{fmt(stockRetailValue-stockValue)}</div></div>
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Costo acquisto</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#E8C44A"}}>{fmt(stockValue)}</div>
+          </div>
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Valore vendita</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#D96C05"}}>{fmt(stockRetailValue)}</div>
+          </div>
+          <div style={{flex:1,minWidth:120,background:"#1A1410",borderRadius:8,padding:"10px 12px"}}>
+            <div style={{fontSize:11,color:"#A08060"}}>Margine potenziale</div>
+            <div style={{fontSize:18,fontWeight:800,color:"#5CB85C"}}>{fmt(stockRetailValue-stockValue)}</div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 // ─── BACKUP / RIPRISTINO ─────────────────────────────────────────────────────
 function Backup({products,sales,expenses,settings,setProducts,setSales,setExpenses,setSettings}){
