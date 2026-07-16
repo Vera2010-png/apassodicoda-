@@ -1193,16 +1193,18 @@ function Report({products,sales,expenses,getSalesByProduct,purchaseOrders}){
             {label:"📦 Ordini pagati questo mese",value:"- "+fmt(totalPurchases),color:"#E05252"},
             {label:"💵 Flusso di cassa reale",value:fmt(cashFlow),sub:"incassato - ordini - spese",color:cashFlow>=0?"#5CB85C":"#E05252",bold:true,big:true},
           ]:[]),
-        ].map((row,i,arr)=>(
-          {row.sep?<div key={i} style={{borderTop:"2px dashed #3D2E1E",margin:"4px 0"}}/>:(
+        ].map((row,i,arr)=>
+          row.sep
+            ?<div key={i} style={{borderTop:"2px dashed #3D2E1E",margin:"4px 0"}}/>
+            :(
           <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<arr.length-1&&!arr[i+1]?.sep?"1px solid #3D2E1E":"none"}}>
             <div>
               <div style={{fontSize:row.big?15:13,fontWeight:row.bold?700:400}}>{row.label}</div>
               {row.sub&&<div style={{fontSize:10,color:"#A08060"}}>{row.sub}</div>}
             </div>
             <span style={{fontSize:row.big?16:13,fontWeight:row.bold?800:600,color:row.color}}>{row.value}</span>
-          </div>)}
-        ))}
+          </div>)
+        )}
       </div>
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
         <div style={{fontSize:14,fontWeight:700,color:"#A78BFA",marginBottom:10}}>🏛️ Riepilogo IVA</div>
@@ -1217,7 +1219,7 @@ function Report({products,sales,expenses,getSalesByProduct,purchaseOrders}){
           <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:10}}>🏷️ Vendite per Prodotto</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6}}><span>Prodotto</span><span style={{textAlign:"right"}}>Qtà</span><span style={{textAlign:"right"}}>IVA</span><span style={{textAlign:"right"}}>Ricavo netto</span><span style={{textAlign:"right"}}>Margine</span></div>
           {productBreakdown.map(({product,qty,revenue:rev,cost})=>{
-            const iva=product.iva||22;const rn=rev/(1+iva/100);const cn=costNetto||cost/(1+iva/100);
+            const iva=product.iva||22;const rn=rev/(1+iva/100);const cn=costNetto||(cost/(1+iva/100));
             return(<div key={product.id} style={{display:"grid",gridTemplateColumns:"1fr auto auto auto auto",gap:"4px 12px",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:12}}><span>{product.name}</span><span style={{textAlign:"right",color:"#A08060"}}>{qty}</span><span style={{textAlign:"right",color:"#A78BFA"}}>{iva}%</span><span style={{textAlign:"right",color:"#D96C05",fontWeight:600}}>{fmt(rn)}</span><span style={{textAlign:"right",color:"#5CB85C",fontWeight:600}}>{fmt(rn-cn)}</span></div>);
           })}
         </div>
