@@ -23,7 +23,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-const KEYS = { products:"apc_products", sales:"apc_sales", expenses:"apc_expenses", settings:"apc_settings" };
+const KEYS = { products:"apc_products", sales:"apc_sales", expenses:"apc_expenses", settings:"apc_settings", orders:"apc_orders" };
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)) || null; } catch { return null; } };
 const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 const ivaForCategory = (cat) => (cat||"").toUpperCase().includes("BARF") ? 10 : 22;
@@ -1039,8 +1039,103 @@ function Fornitori({suppliers,setSuppliers,products,setProducts}){
   );
 }
 
+
+// ─── ORDINI EFFETTUATI ───────────────────────────────────────────────────────
+function OrdiniEffettuati({purchaseOrders,setPurchaseOrders,suppliers}){
+  const empty={date:"",supplierId:"",amount:"",notes:""};
+  const [form,setForm]=useState({...empty,date:new Date().toISOString().slice(0,10)});
+  const [selMonth,setSelMonth]=useState(thisMonth());
+
+  const handleAdd=()=>{
+    if(!form.date||!form.amount)return;
+    const sup=suppliers.find(s=>s.id===form.supplierId);
+    setPurchaseOrders(prev=>[...prev,{...form,amount:parseFloat(form.amount),id:uid(),supplierName:sup?.name||"Fornitore non specificato"}]);
+    setForm({...empty,date:new Date().toISOString().slice(0,10)});
+  };
+
+  const months=[...new Set([thisMonth(),...purchaseOrders.map(o=>o.date.slice(0,7))])].sort().reverse();
+  const monthOrders=purchaseOrders.filter(o=>o.date.slice(0,7)===selMonth);
+  const monthTotal=monthOrders.reduce((a,o)=>a+o.amount,0);
+
+  // Raggruppa per fornitore
+  const bySupplier={};
+  monthOrders.forEach(o=>{
+    const k=o.supplierName||"Altro";
+    if(!bySupplier[k])bySupplier[k]=0;
+    bySupplier[k]+=o.amount;
+  });
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Form aggiunta */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>➕ Registra pagamento ordine</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:10,alignItems:"flex-end"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Data pagamento *</label>
+            <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={iStyle}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Fornitore</label>
+            <select value={form.supplierId} onChange={e=>setForm(f=>({...f,supplierId:e.target.value}))} style={iStyle}>
+              <option value="">-- Seleziona --</option>
+              {suppliers.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Importo pagato € *</label>
+            <input type="number" step="0.01" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" style={iStyle}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Note (opzionale)</label>
+            <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="es. n° fattura" style={iStyle}/>
+          </div>
+          <button onClick={handleAdd} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Aggiungi</button>
+        </div>
+      </div>
+
+      {/* Filtro mese */}
+      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+        <label style={{fontSize:12,color:"#A08060"}}>Mese:</label>
+        <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>{months.map(m=><option key={m}>{m}</option>)}</select>
+        <div style={{marginLeft:"auto",display:"flex",gap:16}}>
+          <div style={{textAlign:"right"}}><div style={{fontSize:11,color:"#A08060"}}>Totale pagato</div><div style={{fontSize:20,fontWeight:800,color:"#E05252"}}>{fmt(monthTotal)}</div></div>
+        </div>
+      </div>
+
+      {/* Riepilogo per fornitore */}
+      {Object.keys(bySupplier).length>0&&(
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📦 Per fornitore</div>
+          {Object.entries(bySupplier).sort((a,b)=>b[1]-a[1]).map(([name,total])=>(
+            <div key={name} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+              <span>{name}</span>
+              <span style={{fontWeight:700,color:"#E8C44A"}}>{fmt(total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lista ordini */}
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        {monthOrders.length===0&&<div style={{color:"#A08060",textAlign:"center",padding:20,fontSize:13}}>Nessun ordine registrato per questo mese.</div>}
+        {[...monthOrders].sort((a,b)=>b.date.localeCompare(a.date)).map(o=>(
+          <div key={o.id} style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:600}}>{o.supplierName}</div>
+              <div style={{fontSize:11,color:"#A08060"}}>{new Date(o.date).toLocaleDateString("it-IT")}{o.notes?" · "+o.notes:""}</div>
+            </div>
+            <span style={{fontWeight:700,color:"#E8C44A",fontSize:15}}>{fmt(o.amount)}</span>
+            <button onClick={()=>setPurchaseOrders(prev=>prev.filter(x=>x.id!==o.id))} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer",fontSize:14}}>🗑</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── REPORT ──────────────────────────────────────────────────────────────────
-function Report({products,sales,expenses,getSalesByProduct}){
+function Report({products,sales,expenses,getSalesByProduct,purchaseOrders}){
   const [selMonth,setSelMonth]=useState(thisMonth());
   const months=[...new Set([thisMonth(),...sales.map(s=>s.date.slice(0,7)),...expenses.map(e=>e.month)])].sort().reverse();
   const salesMap=getSalesByProduct(selMonth);
@@ -1060,10 +1155,13 @@ function Report({products,sales,expenses,getSalesByProduct}){
   const totalIva=totalIva22+totalIva10;
   const grossMargin=totalImponibile-totalCostGoods;
   const totalExpenses=monthExpenses.reduce((a,e)=>a+e.amount,0);
+  // Ordini pagati nel mese selezionato
+  const monthPurchases=(purchaseOrders||[]).filter(o=>o.date.slice(0,7)===selMonth);
+  const totalPurchases=monthPurchases.reduce((a,o)=>a+o.amount,0);
   const netResult=grossMargin-totalExpenses;
+  // Flusso di cassa reale = incassato - ordini pagati - spese
+  const cashFlow=totalLordo-totalPurchases-totalExpenses;
   const marginPct=totalImponibile>0?(grossMargin/totalImponibile*100).toFixed(1):0;
-  // Ricalcola cost con IVA scorporata per breakdown prodotti
-  const salesMapNetto=getSalesByProduct(selMonth,true);
   const productBreakdown=Object.entries(salesMap).map(([id,d])=>{
     const product=products.find(p=>p.id===id);
     if(!product)return null;
@@ -1082,19 +1180,28 @@ function Report({products,sales,expenses,getSalesByProduct}){
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
         <div style={{fontSize:14,fontWeight:700,color:"#D96C05",marginBottom:12}}>📊 Conto Economico — {selMonth}</div>
         {[
-          {label:"Incassato (IVA inclusa)",value:fmt(totalLordo),color:"#D96C05"},
-          {label:"IVA collettata",value:"- "+fmt(totalIva),color:"#A78BFA"},
-          {label:"Fatturato netto (imponibile)",value:fmt(totalImponibile),color:"#F28C35",bold:true},
-          {label:"Costo del venduto (impon.)",value:"- "+fmt(totalCostGoods),color:"#E05252"},
-          ...(totalSconti>0?[{label:"Sconti applicati",value:fmt(totalSconti),color:"#E05252"}]:[]),
-          {label:"Margine lordo",value:fmt(grossMargin)+" ("+marginPct+"%)",color:grossMargin>=0?"#5CB85C":"#E05252",bold:true},
-          {label:"Spese fisse",value:"- "+fmt(totalExpenses),color:"#E8C44A"},
-          {label:"Risultato netto",value:fmt(netResult),color:netResult>=0?"#5CB85C":"#E05252",bold:true,big:true},
+          {label:"💰 Incassato (IVA inclusa)",value:fmt(totalLordo),color:"#D96C05"},
+          {label:"🏛️ IVA collettata (da versare)",value:"- "+fmt(totalIva),color:"#A78BFA"},
+          {label:"📊 Fatturato netto (imponibile)",value:fmt(totalImponibile),color:"#F28C35",bold:true},
+          {label:"📦 Costo del venduto (impon.)",value:"- "+fmt(totalCostGoods),color:"#E05252"},
+          ...(totalSconti>0?[{label:"🏷️ Sconti applicati",value:"- "+fmt(totalSconti),color:"#E05252"}]:[]),
+          {label:"📈 Margine commerciale",value:fmt(grossMargin)+" ("+marginPct+"%)",color:grossMargin>=0?"#5CB85C":"#E05252",bold:true},
+          {label:"💳 Spese fisse",value:"- "+fmt(totalExpenses),color:"#E8C44A"},
+          {label:"🏁 Risultato gestionale",value:fmt(netResult),sub:"margine - spese fisse",color:netResult>=0?"#5CB85C":"#E05252",bold:true,big:true},
+          ...(totalPurchases>0?[
+            {label:"",value:"",sep:true},
+            {label:"📦 Ordini pagati questo mese",value:"- "+fmt(totalPurchases),color:"#E05252"},
+            {label:"💵 Flusso di cassa reale",value:fmt(cashFlow),sub:"incassato - ordini - spese",color:cashFlow>=0?"#5CB85C":"#E05252",bold:true,big:true},
+          ]:[]),
         ].map((row,i,arr)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:i<arr.length-1?"1px solid #3D2E1E":"none"}}>
-            <span style={{fontSize:row.big?15:13,fontWeight:row.bold?700:400}}>{row.label}</span>
+          {row.sep?<div key={i} style={{borderTop:"2px dashed #3D2E1E",margin:"4px 0"}}/>:(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<arr.length-1&&!arr[i+1]?.sep?"1px solid #3D2E1E":"none"}}>
+            <div>
+              <div style={{fontSize:row.big?15:13,fontWeight:row.bold?700:400}}>{row.label}</div>
+              {row.sub&&<div style={{fontSize:10,color:"#A08060"}}>{row.sub}</div>}
+            </div>
             <span style={{fontSize:row.big?16:13,fontWeight:row.bold?800:600,color:row.color}}>{row.value}</span>
-          </div>
+          </div>)}
         ))}
       </div>
       <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
@@ -1711,8 +1818,10 @@ function App(){
   const [settings,setSettings]=useState(()=>load(KEYS.settings)||{budget:2000});
   const [customers,setCustomers]=useState(()=>load("apc_customers")||[]);
   const [suppliers,setSuppliers]=useState(()=>load("apc_suppliers")||SUPPLIERS_DEFAULT);
+  const [purchaseOrders,setPurchaseOrders]=useState(()=>load(KEYS.orders)||[]);
   useEffect(()=>save(KEYS.products,products),[products]);
   useEffect(()=>save("apc_suppliers",suppliers),[suppliers]);
+  useEffect(()=>save(KEYS.orders,purchaseOrders),[purchaseOrders]);
   useEffect(()=>save(KEYS.sales,sales),[sales]);
   useEffect(()=>save(KEYS.expenses,expenses),[expenses]);
   useEffect(()=>save(KEYS.settings,settings),[settings]);
@@ -1721,7 +1830,7 @@ function App(){
   const getSalesThisMonth=useCallback(()=>{const m=thisMonth();return sales.filter(s=>s.date.startsWith(m));},[sales]);
   const getSalesByProduct=useCallback((monthStr)=>{
     const m=monthStr||thisMonth();const map={};
-    sales.filter(s=>s.date.startsWith(m)).forEach(s=>{if(!map[s.productId])map[s.productId]={qty:0,revenue:0,cost:0};map[s.productId].qty+=s.qty;map[s.productId].revenue+=s.qty*s.sellPrice;map[s.productId].cost+=s.qty*s.buyPrice;});
+    sales.filter(s=>s.date.startsWith(m)).forEach(s=>{if(!map[s.productId])map[s.productId]={qty:0,revenue:0,cost:0};map[s.productId].qty+=s.qty;map[s.productId].revenue+=s.finalPrice||(s.qty*s.sellPrice);map[s.productId].cost+=s.qty*s.buyPrice;});
     return map;
   },[sales]);
 
@@ -1734,6 +1843,7 @@ function App(){
     {id:"spese",label:"Spese",icon:"💳"},
     {id:"ordini",label:"Proposta Ordini",icon:"📋"},
     {id:"fornitori",label:"Fornitori",icon:"🏭"},
+    {id:"acquisti",label:"Ordini pagati",icon:"🧾"},
     {id:"report",label:"Report",icon:"📊"},
     {id:"fedelta",label:"Fedeltà",icon:"⭐"},
     {id:"backup",label:"Backup",icon:"💾"},
@@ -1757,7 +1867,8 @@ function App(){
         {tab==="spese"&&<Spese expenses={expenses} setExpenses={setExpenses}/>}
         {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings} suppliers={suppliers} setSuppliers={setSuppliers}/>}
         {tab==="fornitori"&&<Fornitori suppliers={suppliers} setSuppliers={setSuppliers} products={products} setProducts={setProducts}/>}
-        {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct}/>}
+        {tab==="acquisti"&&<OrdiniEffettuati purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} suppliers={suppliers}/>}
+        {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct} purchaseOrders={purchaseOrders}/>}
         {tab==="fedelta"&&<Fedelta customers={customers} setCustomers={setCustomers} sales={sales}/>}
         {tab==="backup"&&<Backup products={products} sales={sales} expenses={expenses} settings={settings} setProducts={setProducts} setSales={setSales} setExpenses={setExpenses} setSettings={setSettings}/>}
       </div>
