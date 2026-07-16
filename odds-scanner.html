@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Odds Scanner — Rilevatore Arbitraggi &amp; Value Bet</title>
+<title>Odds Scanner — Arbitraggi, Value Bet &amp; Schedine</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -11,16 +11,11 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
   :root{
-    --bg: #0D1114;
-    --panel: #161C20;
-    --panel-2: #1D2529;
-    --line: #2A3439;
-    --text: #E7ECEE;
-    --muted: #7C8A90;
-    --arb: #35D68C;
-    --arb-dim: #1B4A38;
-    --value: #F2A93B;
-    --value-dim: #4A3A1B;
+    --bg: #0D1114; --panel: #161C20; --panel-2: #1D2529; --line: #2A3439;
+    --text: #E7ECEE; --muted: #7C8A90;
+    --arb: #35D68C; --arb-dim: #1B4A38;
+    --value: #F2A93B; --value-dim: #4A3A1B;
+    --slip: #6EA8FE; --slip-dim: #1B2C4A;
     --bad: #E15B5B;
     --font-display: 'Space Grotesk', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
@@ -28,77 +23,79 @@
   *{ box-sizing: border-box; }
   body{ margin:0; background:var(--bg); color:var(--text); font-family: var(--font-display); }
   .app{ max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
-
   .header{ display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:28px; border-bottom:1px solid var(--line); padding-bottom:20px; flex-wrap:wrap;}
   .brand-eyebrow{ font-family:var(--font-mono); font-size:12px; letter-spacing:.14em; color:var(--muted); text-transform:uppercase; margin-bottom:6px;}
   .brand-title{ font-size:30px; font-weight:700; margin:0; letter-spacing:-0.01em;}
   .brand-title span{ color: var(--arb);}
   .scan-status{ font-family:var(--font-mono); font-size:12px; color:var(--muted); text-align:right;}
   .scan-status b{ color:var(--text);}
-
   .panel{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:20px;}
   .panel-title{ font-family:var(--font-mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 14px;}
-
   .config-grid{ display:grid; grid-template-columns: 1.6fr 1fr 1fr; gap:14px;}
   @media (max-width:760px){ .config-grid{ grid-template-columns:1fr; } }
   label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-family:var(--font-mono);}
-  input[type=text], input[type=password], select{
+  input[type=text], input[type=password], input[type=number], select{
     width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
     padding:10px 12px; border-radius:7px; font-family:var(--font-mono); font-size:13px;
   }
   input:focus, select:focus{ outline:2px solid var(--arb); outline-offset:1px;}
-
   .leagues-box{ margin-top:16px; }
-  .leagues-list{ display:flex; flex-wrap:wrap; gap:8px; max-height:160px; overflow-y:auto; padding:4px 0;}
+  .cat-block{ margin-bottom:14px; }
+  .cat-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .cat-name{ font-family:var(--font-mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em;}
+  .cat-toggle{ font-family:var(--font-mono); font-size:11px; color:var(--slip); cursor:pointer; background:none; border:none; padding:2px 4px;}
+  .leagues-list{ display:flex; flex-wrap:wrap; gap:8px;}
   .league-chip{ font-family:var(--font-mono); font-size:12px; padding:6px 10px; border-radius:20px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); cursor:pointer; user-select:none; transition:.12s;}
   .league-chip.on{ border-color:var(--arb); color:var(--arb); background:var(--arb-dim);}
   .league-chip:hover{ border-color:var(--muted); }
-
   .btn-row{ display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:center;}
   button{ font-family:var(--font-mono); font-size:13px; font-weight:500; border-radius:7px; border:1px solid var(--line); padding:10px 16px; cursor:pointer; background:var(--panel-2); color:var(--text); transition:.12s;}
   button:hover{ border-color:var(--muted);}
   button.primary{ background:var(--arb); color:#08130D; border-color:var(--arb); font-weight:600;}
   button.primary:hover{ filter:brightness(1.08);}
+  button.slip-btn{ background:var(--slip); color:#081226; border-color:var(--slip); font-weight:600;}
   button:disabled{ opacity:.5; cursor:default;}
   .hint{ font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5;}
   .hint a{ color:var(--value);}
-
-  .tabs{ display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--line);}
+  .tabs{ display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--line); flex-wrap:wrap;}
   .tab{ font-family:var(--font-mono); font-size:12px; letter-spacing:.06em; padding:10px 16px; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; text-transform:uppercase;}
   .tab.active{ color:var(--text); border-bottom-color:var(--arb);}
   .tab .count{ color:var(--arb); margin-left:4px;}
-
   .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:12px; position:relative; overflow:hidden;}
   .card.arb{ border-left:3px solid var(--arb);}
   .card.value{ border-left:3px solid var(--value);}
+  .card.slip{ border-left:3px solid var(--slip);}
   .card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;}
   .match-name{ font-weight:600; font-size:15px;}
   .match-meta{ font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-top:3px;}
   .edge-badge{ font-family:var(--font-mono); font-size:13px; font-weight:600; padding:4px 10px; border-radius:6px; white-space:nowrap;}
   .edge-badge.arb{ color:var(--arb); background:var(--arb-dim);}
   .edge-badge.value{ color:var(--value); background:var(--value-dim);}
-
+  .edge-badge.slip{ color:var(--slip); background:var(--slip-dim);}
   .outcomes{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;}
   .outcome{ flex:1; min-width:150px; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:10px 12px;}
   .outcome-label{ font-family:var(--font-mono); font-size:11px; color:var(--muted); text-transform:uppercase;}
   .outcome-odds{ font-family:var(--font-mono); font-size:18px; font-weight:600; margin-top:2px;}
   .outcome-book{ font-size:11px; color:var(--muted); margin-top:2px;}
   .outcome.hit .outcome-odds{ color:var(--value);}
-
   .stake-line{ font-family:var(--font-mono); font-size:12px; color:var(--muted); margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);}
-
   .empty{ text-align:center; padding:50px 20px; color:var(--muted); font-family:var(--font-mono); font-size:13px;}
-
   .board{ overflow-x:auto;}
   table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12px;}
   th{ text-align:left; color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line); text-transform:uppercase; font-size:10px; letter-spacing:.06em;}
   td{ padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
   td.best{ color:var(--arb); font-weight:600;}
-
   .demo-tag{ font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; background:var(--value-dim); color:var(--value); padding:3px 8px; border-radius:5px; margin-left:10px;}
-
   .footer-note{ font-family:var(--font-mono); font-size:11px; color:var(--muted); text-align:center; margin-top:40px; line-height:1.7; border-top:1px solid var(--line); padding-top:20px;}
-
+  .slip-controls{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:18px;}
+  .slip-controls > div{ min-width:150px;}
+  .slip-row{ display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); gap:10px; flex-wrap:wrap;}
+  .slip-row:last-child{ border-bottom:none;}
+  .slip-row .m{ font-size:13px;}
+  .slip-row .meta{ font-family:var(--font-mono); font-size:11px; color:var(--muted);}
+  .slip-summary{ display:flex; gap:24px; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); flex-wrap:wrap;}
+  .slip-summary div{ font-family:var(--font-mono); font-size:12px; color:var(--muted);}
+  .slip-summary b{ display:block; font-size:18px; color:var(--text); font-family:var(--font-mono); margin-top:2px;}
   ::-webkit-scrollbar{ height:8px; width:8px;}
   ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px;}
 </style>
@@ -108,37 +105,57 @@
 <script type="text/babel">
 const {useState, useEffect, useMemo, useCallback} = React;
 
-// ---------- DEMO DATA (usato finché non inserisci una API key reale) ----------
+// ---------- CATEGORIZZAZIONE CAMPIONATI ----------
+const CATEGORY_RULES = [
+  { name: "Coppe internazionali", test: k => /uefa|champs_league|europa_league|conference_league|libertadores|sudamericana|world_cup|nations_league|euro_|copa_america|caribbean|concacaf|afc_champions|fifa_club_world_cup/.test(k) },
+  { name: "Italia", test: k => /italy/.test(k) },
+  { name: "Europa (big 5 + altri)", test: k => /england|epl|spain|la_liga|germany|bundesliga|france|ligue_one|portugal|netherlands|belgium|scotland|turkey|greece|austria|switzerland|russia|poland/.test(k) },
+  { name: "Nord Europa", test: k => /norway|sweden|denmark|finland|iceland/.test(k) },
+  { name: "Sud America", test: k => /brazil|argentina|chile|colombia|peru|uruguay|ecuador|paraguay|venezuela|bolivia|conmebol/.test(k) },
+  { name: "Resto del mondo", test: () => true },
+];
+function categoryFor(key){
+  for(const r of CATEGORY_RULES){ if(r.test(key)) return r.name; }
+  return "Resto del mondo";
+}
+function groupByCategory(sports){
+  const groups = {};
+  sports.forEach(s=>{
+    const cat = categoryFor(s.key);
+    if(!groups[cat]) groups[cat] = [];
+    groups[cat].push(s);
+  });
+  const order = CATEGORY_RULES.map(r=>r.name);
+  return order.filter(o=>groups[o]).map(o=>({name:o, items:groups[o]}));
+}
+
+// ---------- DEMO DATA ----------
 const DEMO_SPORTS = [
   {key:"soccer_italy_serie_a", title:"Serie A", group:"Soccer"},
   {key:"soccer_uefa_champs_league", title:"Champions League", group:"Soccer"},
+  {key:"soccer_uefa_europa_league", title:"Europa League", group:"Soccer"},
   {key:"soccer_epl", title:"Premier League", group:"Soccer"},
   {key:"soccer_spain_la_liga", title:"La Liga", group:"Soccer"},
   {key:"soccer_germany_bundesliga", title:"Bundesliga", group:"Soccer"},
+  {key:"soccer_norway_eliteserien", title:"Eliteserien (Norvegia)", group:"Soccer"},
+  {key:"soccer_sweden_allsvenskan", title:"Allsvenskan (Svezia)", group:"Soccer"},
+  {key:"soccer_brazil_campeonato", title:"Brasileirão", group:"Soccer"},
+  {key:"soccer_argentina_primera_division", title:"Primera División (Argentina)", group:"Soccer"},
+  {key:"soccer_conmebol_copa_libertadores", title:"Copa Libertadores", group:"Soccer"},
 ];
-
 function demoOdds(){
-  const mk = (home, away, books) => ({ id: home+away, home_team:home, away_team:away,
-    commence_time: new Date(Date.now()+1000*60*60*24).toISOString(), bookmakers: books });
+  const mk = (home, away, books) => ({ id: home+away+Math.random(), home_team:home, away_team:away,
+    commence_time: new Date(Date.now()+1000*60*60*24*(1+Math.random()*3)).toISOString(), bookmakers: books });
   const book = (title, h,d,a) => ({ title, markets:[{key:"h2h", outcomes:[
     {name:"home", price:h}, {name:"draw", price:d}, {name:"away", price:a}
   ]}]});
   return [
-    mk("Inter","Juventus",[
-      book("Bet365",1.85,3.60,4.20), book("Sisal",1.90,3.55,4.10),
-      book("Snai",1.78,3.70,4.40), book("Goldbet",2.05,3.50,3.90),
-      book("Betflag",1.88,3.58,4.15)
-    ]),
-    mk("Milan","Napoli",[
-      book("Bet365",2.60,3.20,2.75), book("Sisal",2.55,3.30,2.70),
-      book("Snai",2.70,3.10,2.65), book("Goldbet",2.50,3.35,2.90),
-      book("Betflag",2.62,3.22,2.72)
-    ]),
-    mk("Atalanta","Roma",[
-      book("Bet365",2.10,3.30,3.50), book("Sisal",2.15,3.25,3.40),
-      book("Snai",2.05,3.35,3.65), book("Goldbet",2.20,3.20,3.30),
-      book("Betflag",2.12,3.28,3.45)
-    ]),
+    mk("Inter","Juventus",[ book("Bet365",1.85,3.60,4.20), book("Sisal",1.90,3.55,4.10), book("Snai",1.78,3.70,4.40), book("Goldbet",2.05,3.50,3.90), book("Betflag",1.88,3.58,4.15) ]),
+    mk("Milan","Napoli",[ book("Bet365",2.60,3.20,2.75), book("Sisal",2.55,3.30,2.70), book("Snai",2.70,3.10,2.65), book("Goldbet",2.50,3.35,2.90), book("Betflag",2.62,3.22,2.72) ]),
+    mk("Atalanta","Roma",[ book("Bet365",2.10,3.30,3.50), book("Sisal",2.15,3.25,3.40), book("Snai",2.05,3.35,3.65), book("Goldbet",2.20,3.20,3.30), book("Betflag",2.12,3.28,3.45) ]),
+    mk("Rosenborg","Bodø/Glimt",[ book("Bet365",3.10,3.40,2.15), book("Unibet",3.00,3.50,2.20), book("Betsson",3.20,3.30,2.10) ]),
+    mk("Flamengo","Palmeiras",[ book("Bet365",2.30,3.10,3.20), book("Betano",2.25,3.15,3.30), book("Sportingbet",2.35,3.05,3.10) ]),
+    mk("River Plate","Boca Juniors",[ book("Bet365",2.40,3.00,3.10), book("Betano",2.45,2.95,3.15), book("Codere",2.35,3.05,3.20) ]),
   ];
 }
 
@@ -159,29 +176,31 @@ function analyzeMatch(m){
   if(!outcomes.home.length || !outcomes.away.length || !outcomes.draw.length) return null;
 
   const best = {};
-  ["home","draw","away"].forEach(k=>{
-    best[k] = outcomes[k].reduce((a,b)=> b.price>a.price ? b : a);
-  });
+  ["home","draw","away"].forEach(k=>{ best[k] = outcomes[k].reduce((a,b)=> b.price>a.price ? b : a); });
 
   const arbSum = 1/best.home.price + 1/best.draw.price + 1/best.away.price;
   const isArb = arbSum < 1;
   const arbProfitPct = isArb ? (1/arbSum - 1) * 100 : 0;
 
   const avg = {};
-  ["home","draw","away"].forEach(k=>{
-    avg[k] = outcomes[k].reduce((s,x)=>s+x.price,0)/outcomes[k].length;
-  });
+  ["home","draw","away"].forEach(k=>{ avg[k] = outcomes[k].reduce((s,x)=>s+x.price,0)/outcomes[k].length; });
 
+  // Probabilità "fair" stimata: implicita dalla media di mercato, corretta per il margine (devig)
+  const impliedRaw = { home: 1/avg.home, draw: 1/avg.draw, away: 1/avg.away };
+  const overround = impliedRaw.home + impliedRaw.draw + impliedRaw.away;
+  const fairProb = { home: impliedRaw.home/overround, draw: impliedRaw.draw/overround, away: impliedRaw.away/overround };
+
+  // Value: expected value positivo = price * fairProb - 1
   const valueHits = [];
   ["home","draw","away"].forEach(k=>{
     outcomes[k].forEach(o=>{
-      const edge = (o.price/avg[k] - 1) * 100;
-      if(edge >= 5){ valueHits.push({side:k, book:o.book, price:o.price, avg:avg[k], edge}); }
+      const ev = (o.price * fairProb[k] - 1) * 100;
+      if(ev >= 3){ valueHits.push({side:k, book:o.book, price:o.price, fairProb:fairProb[k], ev}); }
     });
   });
-  valueHits.sort((a,b)=>b.edge-a.edge);
+  valueHits.sort((a,b)=>b.ev-a.ev);
 
-  return { match:m, outcomes, best, avg, isArb, arbProfitPct, valueHits };
+  return { match:m, outcomes, best, avg, fairProb, isArb, arbProfitPct, valueHits };
 }
 
 function stakesForArb(best, total=100){
@@ -195,6 +214,39 @@ function stakesForArb(best, total=100){
 
 const LABELS = {home:"1 (Casa)", draw:"X (Pareggio)", away:"2 (Trasferta)"};
 
+// ---------- COSTRUTTORE SCHEDINE ----------
+function buildSlip(analyzed, profile, size){
+  // Per ogni partita analizzata, prendo la migliore selezione secondo il profilo scelto
+  const candidates = [];
+  analyzed.forEach(a=>{
+    ["home","draw","away"].forEach(k=>{
+      const price = a.best[k].price;
+      const fp = a.fairProb[k];
+      const ev = (price*fp - 1)*100;
+      let score;
+      if(profile==="sicura") score = fp;
+      else if(profile==="aggressiva") score = ev;
+      else score = fp*0.55 + Math.max(ev,0)/100*0.45; // bilanciata
+      candidates.push({ match:a.match, side:k, price, fairProb:fp, ev, book:a.best[k].book, score });
+    });
+  });
+  candidates.sort((a,b)=>b.score-a.score);
+  // Una sola selezione per partita, evitando doppioni
+  const seen = new Set();
+  const picks = [];
+  for(const c of candidates){
+    if(seen.has(c.match.id)) continue;
+    if(profile==="sicura" && c.fairProb < 0.4) continue;
+    if(profile!=="sicura" && c.ev <= 0) continue;
+    picks.push(c); seen.add(c.match.id);
+    if(picks.length===size) break;
+  }
+  if(picks.length < size) return null;
+  const combinedOdds = picks.reduce((p,c)=>p*c.price,1);
+  const combinedProb = picks.reduce((p,c)=>p*c.fairProb,1);
+  return { picks, combinedOdds, combinedProb };
+}
+
 function App(){
   const [apiKey, setApiKey] = useState("");
   const [region, setRegion] = useState("eu");
@@ -206,7 +258,11 @@ function App(){
   const [error, setError] = useState("");
   const [tab, setTab] = useState("arb");
   const [lastScan, setLastScan] = useState(new Date());
+  const [slipProfile, setSlipProfile] = useState("bilanciata");
+  const [slipSize, setSlipSize] = useState(3);
   const isDemo = apiKey.trim().length === 0;
+
+  const categories = useMemo(()=>groupByCategory(sports), [sports]);
 
   const loadSports = useCallback(async ()=>{
     if(isDemo){ setSports(DEMO_SPORTS); setSelected(DEMO_SPORTS.map(s=>s.key)); return; }
@@ -245,10 +301,17 @@ function App(){
   const toggleLeague = (key)=>{
     setSelected(prev => prev.includes(key) ? prev.filter(k=>k!==key) : [...prev, key]);
   };
+  const toggleCategory = (items, allOn)=>{
+    const keys = items.map(i=>i.key);
+    setSelected(prev => allOn ? prev.filter(k=>!keys.includes(k)) : Array.from(new Set([...prev, ...keys])));
+  };
+  const selectAll = ()=> setSelected(sports.map(s=>s.key));
+  const selectNone = ()=> setSelected([]);
 
   const analyzed = useMemo(()=> matches.map(analyzeMatch).filter(Boolean), [matches]);
   const arbs = useMemo(()=> analyzed.filter(a=>a.isArb).sort((a,b)=>b.arbProfitPct-a.arbProfitPct), [analyzed]);
   const values = useMemo(()=> analyzed.filter(a=>a.valueHits.length>0), [analyzed]);
+  const slip = useMemo(()=> buildSlip(analyzed, slipProfile, slipSize), [analyzed, slipProfile, slipSize]);
 
   return (
     <div className="app">
@@ -282,20 +345,35 @@ function App(){
           </div>
           <div>
             <label>Soglia value bet</label>
-            <select disabled>
-              <option>+5% sopra la media di mercato</option>
-            </select>
+            <select disabled><option>EV &ge; +3% sulla probabilità fair</option></select>
           </div>
         </div>
 
         <div className="leagues-box">
-          <label>Campionati {isDemo ? "(demo)" : `(${selected.length}/${sports.length} selezionati)`}</label>
-          <div className="leagues-list">
-            {sports.map(s=>(
-              <div key={s.key} className={"league-chip"+(selected.includes(s.key)?" on":"")}
-                onClick={()=>toggleLeague(s.key)}>{s.title}</div>
-            ))}
+          <div className="cat-head">
+            <label style={{margin:0}}>Campionati {isDemo ? "(demo)" : `(${selected.length}/${sports.length} selezionati)`}</label>
+            {!isDemo && <div>
+              <button className="cat-toggle" onClick={selectAll}>Seleziona tutti</button>
+              <button className="cat-toggle" onClick={selectNone}>Deseleziona tutti</button>
+            </div>}
           </div>
+          {categories.map(cat=>{
+            const allOn = cat.items.every(i=>selected.includes(i.key));
+            return (
+              <div className="cat-block" key={cat.name}>
+                <div className="cat-head">
+                  <span className="cat-name">{cat.name} ({cat.items.length})</span>
+                  <button className="cat-toggle" onClick={()=>toggleCategory(cat.items, allOn)}>{allOn ? "Rimuovi" : "Aggiungi tutti"}</button>
+                </div>
+                <div className="leagues-list">
+                  {cat.items.map(s=>(
+                    <div key={s.key} className={"league-chip"+(selected.includes(s.key)?" on":"")}
+                      onClick={()=>toggleLeague(s.key)}>{s.title}</div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="btn-row">
@@ -308,22 +386,17 @@ function App(){
         </div>
         <p className="hint">
           {isDemo
-            ? <>Stai vedendo dati di esempio. Registrati su <a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a>, copia la tua API key gratuita e incollala sopra per usare quote reali.</>
-            : "Ogni scansione consuma richieste dalla tua quota mensile (una per campionato selezionato)."}
+            ? <>Stai vedendo dati di esempio con alcuni campionati di ogni area (Europa, Nord Europa, Sud America, coppe). Registrati su <a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a> e incolla la tua key sopra per caricare <b>tutti</b> i campionati realmente offerti dai bookmaker.</>
+            : "Ogni scansione consuma una richiesta di quota per ogni campionato selezionato: con molti campionati (tutti i continenti) puoi esaurire rapidamente il piano gratuito da 500/mese."}
         </p>
         {error && <p className="hint" style={{color:"var(--bad)"}}>{error}</p>}
       </div>
 
       <div className="tabs">
-        <div className={"tab"+(tab==="arb"?" active":"")} onClick={()=>setTab("arb")}>
-          Arbitraggi <span className="count">{arbs.length}</span>
-        </div>
-        <div className={"tab"+(tab==="value"?" active":"")} onClick={()=>setTab("value")}>
-          Value bet <span className="count">{values.length}</span>
-        </div>
-        <div className={"tab"+(tab==="board"?" active":"")} onClick={()=>setTab("board")}>
-          Tabellone completo <span className="count">{analyzed.length}</span>
-        </div>
+        <div className={"tab"+(tab==="arb"?" active":"")} onClick={()=>setTab("arb")}>Arbitraggi <span className="count">{arbs.length}</span></div>
+        <div className={"tab"+(tab==="value"?" active":"")} onClick={()=>setTab("value")}>Value bet <span className="count">{values.length}</span></div>
+        <div className={"tab"+(tab==="slip"?" active":"")} onClick={()=>setTab("slip")}>Schedine proposte</div>
+        <div className={"tab"+(tab==="board"?" active":"")} onClick={()=>setTab("board")}>Tabellone completo <span className="count">{analyzed.length}</span></div>
       </div>
 
       {tab==="arb" && (
@@ -357,7 +430,7 @@ function App(){
       )}
 
       {tab==="value" && (
-        values.length===0 ? <div className="empty">Nessuna quota si scosta abbastanza dalla media di mercato in questa scansione.</div> :
+        values.length===0 ? <div className="empty">Nessuna quota con valore atteso positivo in questa scansione.</div> :
         values.map(a=>(
           <div className="card value" key={a.match.id}>
             <div className="card-top">
@@ -371,8 +444,8 @@ function App(){
               {a.valueHits.slice(0,3).map((v,i)=>(
                 <div className="outcome hit" key={i}>
                   <div className="outcome-label">{LABELS[v.side]}</div>
-                  <div className="outcome-odds">{v.price.toFixed(2)} <span style={{fontSize:11,color:"var(--muted)"}}>(+{v.edge.toFixed(1)}%)</span></div>
-                  <div className="outcome-book">{v.book} · media {v.avg.toFixed(2)}</div>
+                  <div className="outcome-odds">{v.price.toFixed(2)} <span style={{fontSize:11,color:"var(--muted)"}}>(EV +{v.ev.toFixed(1)}%)</span></div>
+                  <div className="outcome-book">{v.book} · prob. fair {(v.fairProb*100).toFixed(0)}%</div>
                 </div>
               ))}
             </div>
@@ -380,12 +453,59 @@ function App(){
         ))
       )}
 
+      {tab==="slip" && (
+        <div className="panel">
+          <p className="panel-title">Costruttore schedine</p>
+          <div className="slip-controls">
+            <div>
+              <label>Profilo</label>
+              <select value={slipProfile} onChange={e=>setSlipProfile(e.target.value)}>
+                <option value="sicura">Sicura (probabilità alta)</option>
+                <option value="bilanciata">Bilanciata</option>
+                <option value="aggressiva">Aggressiva (valore atteso alto)</option>
+              </select>
+            </div>
+            <div>
+              <label>Numero di selezioni</label>
+              <select value={slipSize} onChange={e=>setSlipSize(Number(e.target.value))}>
+                <option value={2}>2</option><option value={3}>3</option>
+                <option value={4}>4</option><option value={5}>5</option>
+              </select>
+            </div>
+          </div>
+
+          {!slip ? <div className="empty">Non ci sono abbastanza partite adatte a questo profilo nella scansione corrente. Prova a scansionare più campionati o riduci il numero di selezioni.</div> : (
+            <div className="card slip">
+              <div className="card-top">
+                <div className="match-name">Schedina proposta — {slipSize} selezioni ({slipProfile})</div>
+                <div className="edge-badge slip">Quota totale {slip.combinedOdds.toFixed(2)}</div>
+              </div>
+              {slip.picks.map((p,i)=>(
+                <div className="slip-row" key={i}>
+                  <div>
+                    <div className="m">{p.match.home_team} — {p.match.away_team}</div>
+                    <div className="meta">{LABELS[p.side]} · {p.book} · prob. fair {(p.fairProb*100).toFixed(0)}%</div>
+                  </div>
+                  <div className="meta">quota {p.price.toFixed(2)} {p.ev>0 && <span style={{color:"var(--value)"}}> · EV +{p.ev.toFixed(1)}%</span>}</div>
+                </div>
+              ))}
+              <div className="slip-summary">
+                <div>Quota combinata<b>{slip.combinedOdds.toFixed(2)}</b></div>
+                <div>Probabilità stimata (fair, indipendenza)<b>{(slip.combinedProb*100).toFixed(1)}%</b></div>
+                <div>Vincita su 10€<b>{(slip.combinedOdds*10).toFixed(2)}€</b></div>
+              </div>
+            </div>
+          )}
+          <p className="hint">
+            La "probabilità stimata" è calcolata togliendo il margine del bookmaker dalle quote medie di mercato (devig) e assumendo che le partite selezionate siano indipendenti tra loro — è una stima statistica, non una previsione certa. Più selezioni aggiungi, più la quota sale ma più la probabilità reale di indovinarle tutte scende.
+          </p>
+        </div>
+      )}
+
       {tab==="board" && (
         <div className="panel board">
           <table>
-            <thead>
-              <tr><th>Partita</th><th>1 miglior quota</th><th>X miglior quota</th><th>2 miglior quota</th><th>Bookmaker consultati</th></tr>
-            </thead>
+            <thead><tr><th>Partita</th><th>1 miglior quota</th><th>X miglior quota</th><th>2 miglior quota</th><th>Bookmaker consultati</th></tr></thead>
             <tbody>
               {analyzed.map(a=>(
                 <tr key={a.match.id}>
@@ -402,7 +522,7 @@ function App(){
       )}
 
       <div className="footer-note">
-        Strumento di analisi quote, non un consiglio di investimento. Gli arbitraggi individuati sono calcolati sui dati ricevuti dall'API e possono cambiare prima del piazzamento; verifica sempre le quote direttamente sul sito del bookmaker.<br/>
+        Strumento di analisi quote, non un consiglio di investimento. Probabilità e arbitraggi sono calcolati sui dati ricevuti dall'API e possono cambiare prima del piazzamento; verifica sempre le quote direttamente sul sito del bookmaker.<br/>
         Il gioco d'azzardo può causare dipendenza patologica — gioca con responsabilità.
       </div>
     </div>
