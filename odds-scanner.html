@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Odds Scanner — Rilevatore Arbitraggi &amp; Value Bet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  :root{
+    --bg: #0D1114;
+    --panel: #161C20;
+    --panel-2: #1D2529;
+    --line: #2A3439;
+    --text: #E7ECEE;
+    --muted: #7C8A90;
+    --arb: #35D68C;
+    --arb-dim: #1B4A38;
+    --value: #F2A93B;
+    --value-dim: #4A3A1B;
+    --bad: #E15B5B;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  *{ box-sizing: border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text); font-family: var(--font-display); }
+  .app{ max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
+
+  .header{ display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:28px; border-bottom:1px solid var(--line); padding-bottom:20px; flex-wrap:wrap;}
+  .brand-eyebrow{ font-family:var(--font-mono); font-size:12px; letter-spacing:.14em; color:var(--muted); text-transform:uppercase; margin-bottom:6px;}
+  .brand-title{ font-size:30px; font-weight:700; margin:0; letter-spacing:-0.01em;}
+  .brand-title span{ color: var(--arb);}
+  .scan-status{ font-family:var(--font-mono); font-size:12px; color:var(--muted); text-align:right;}
+  .scan-status b{ color:var(--text);}
+
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:20px;}
+  .panel-title{ font-family:var(--font-mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 14px;}
+
+  .config-grid{ display:grid; grid-template-columns: 1.6fr 1fr 1fr; gap:14px;}
+  @media (max-width:760px){ .config-grid{ grid-template-columns:1fr; } }
+  label{ display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-family:var(--font-mono);}
+  input[type=text], input[type=password], select{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:10px 12px; border-radius:7px; font-family:var(--font-mono); font-size:13px;
+  }
+  input:focus, select:focus{ outline:2px solid var(--arb); outline-offset:1px;}
+
+  .leagues-box{ margin-top:16px; }
+  .leagues-list{ display:flex; flex-wrap:wrap; gap:8px; max-height:160px; overflow-y:auto; padding:4px 0;}
+  .league-chip{ font-family:var(--font-mono); font-size:12px; padding:6px 10px; border-radius:20px; border:1px solid var(--line); background:var(--panel-2); color:var(--muted); cursor:pointer; user-select:none; transition:.12s;}
+  .league-chip.on{ border-color:var(--arb); color:var(--arb); background:var(--arb-dim);}
+  .league-chip:hover{ border-color:var(--muted); }
+
+  .btn-row{ display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; align-items:center;}
+  button{ font-family:var(--font-mono); font-size:13px; font-weight:500; border-radius:7px; border:1px solid var(--line); padding:10px 16px; cursor:pointer; background:var(--panel-2); color:var(--text); transition:.12s;}
+  button:hover{ border-color:var(--muted);}
+  button.primary{ background:var(--arb); color:#08130D; border-color:var(--arb); font-weight:600;}
+  button.primary:hover{ filter:brightness(1.08);}
+  button:disabled{ opacity:.5; cursor:default;}
+  .hint{ font-size:12px; color:var(--muted); margin-top:10px; line-height:1.5;}
+  .hint a{ color:var(--value);}
+
+  .tabs{ display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--line);}
+  .tab{ font-family:var(--font-mono); font-size:12px; letter-spacing:.06em; padding:10px 16px; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; text-transform:uppercase;}
+  .tab.active{ color:var(--text); border-bottom-color:var(--arb);}
+  .tab .count{ color:var(--arb); margin-left:4px;}
+
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin-bottom:12px; position:relative; overflow:hidden;}
+  .card.arb{ border-left:3px solid var(--arb);}
+  .card.value{ border-left:3px solid var(--value);}
+  .card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;}
+  .match-name{ font-weight:600; font-size:15px;}
+  .match-meta{ font-family:var(--font-mono); font-size:11px; color:var(--muted); margin-top:3px;}
+  .edge-badge{ font-family:var(--font-mono); font-size:13px; font-weight:600; padding:4px 10px; border-radius:6px; white-space:nowrap;}
+  .edge-badge.arb{ color:var(--arb); background:var(--arb-dim);}
+  .edge-badge.value{ color:var(--value); background:var(--value-dim);}
+
+  .outcomes{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;}
+  .outcome{ flex:1; min-width:150px; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:10px 12px;}
+  .outcome-label{ font-family:var(--font-mono); font-size:11px; color:var(--muted); text-transform:uppercase;}
+  .outcome-odds{ font-family:var(--font-mono); font-size:18px; font-weight:600; margin-top:2px;}
+  .outcome-book{ font-size:11px; color:var(--muted); margin-top:2px;}
+  .outcome.hit .outcome-odds{ color:var(--value);}
+
+  .stake-line{ font-family:var(--font-mono); font-size:12px; color:var(--muted); margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);}
+
+  .empty{ text-align:center; padding:50px 20px; color:var(--muted); font-family:var(--font-mono); font-size:13px;}
+
+  .board{ overflow-x:auto;}
+  table{ width:100%; border-collapse:collapse; font-family:var(--font-mono); font-size:12px;}
+  th{ text-align:left; color:var(--muted); font-weight:500; padding:8px 10px; border-bottom:1px solid var(--line); text-transform:uppercase; font-size:10px; letter-spacing:.06em;}
+  td{ padding:9px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  td.best{ color:var(--arb); font-weight:600;}
+
+  .demo-tag{ font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; background:var(--value-dim); color:var(--value); padding:3px 8px; border-radius:5px; margin-left:10px;}
+
+  .footer-note{ font-family:var(--font-mono); font-size:11px; color:var(--muted); text-align:center; margin-top:40px; line-height:1.7; border-top:1px solid var(--line); padding-top:20px;}
+
+  ::-webkit-scrollbar{ height:8px; width:8px;}
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState, useEffect, useMemo, useCallback} = React;
+
+// ---------- DEMO DATA (usato finché non inserisci una API key reale) ----------
+const DEMO_SPORTS = [
+  {key:"soccer_italy_serie_a", title:"Serie A", group:"Soccer"},
+  {key:"soccer_uefa_champs_league", title:"Champions League", group:"Soccer"},
+  {key:"soccer_epl", title:"Premier League", group:"Soccer"},
+  {key:"soccer_spain_la_liga", title:"La Liga", group:"Soccer"},
+  {key:"soccer_germany_bundesliga", title:"Bundesliga", group:"Soccer"},
+];
+
+function demoOdds(){
+  const mk = (home, away, books) => ({ id: home+away, home_team:home, away_team:away,
+    commence_time: new Date(Date.now()+1000*60*60*24).toISOString(), bookmakers: books });
+  const book = (title, h,d,a) => ({ title, markets:[{key:"h2h", outcomes:[
+    {name:"home", price:h}, {name:"draw", price:d}, {name:"away", price:a}
+  ]}]});
+  return [
+    mk("Inter","Juventus",[
+      book("Bet365",1.85,3.60,4.20), book("Sisal",1.90,3.55,4.10),
+      book("Snai",1.78,3.70,4.40), book("Goldbet",2.05,3.50,3.90),
+      book("Betflag",1.88,3.58,4.15)
+    ]),
+    mk("Milan","Napoli",[
+      book("Bet365",2.60,3.20,2.75), book("Sisal",2.55,3.30,2.70),
+      book("Snai",2.70,3.10,2.65), book("Goldbet",2.50,3.35,2.90),
+      book("Betflag",2.62,3.22,2.72)
+    ]),
+    mk("Atalanta","Roma",[
+      book("Bet365",2.10,3.30,3.50), book("Sisal",2.15,3.25,3.40),
+      book("Snai",2.05,3.35,3.65), book("Goldbet",2.20,3.20,3.30),
+      book("Betflag",2.12,3.28,3.45)
+    ]),
+  ];
+}
+
+// ---------- LOGICA QUOTE ----------
+function analyzeMatch(m){
+  const outcomes = {home:[], draw:[], away:[]};
+  m.bookmakers.forEach(bk=>{
+    const mkt = bk.markets.find(x=>x.key==="h2h");
+    if(!mkt) return;
+    mkt.outcomes.forEach(o=>{
+      let side = null;
+      if(o.name === m.home_team || o.name==="home") side="home";
+      else if(o.name === m.away_team || o.name==="away") side="away";
+      else side="draw";
+      outcomes[side].push({book:bk.title, price:o.price});
+    });
+  });
+  if(!outcomes.home.length || !outcomes.away.length || !outcomes.draw.length) return null;
+
+  const best = {};
+  ["home","draw","away"].forEach(k=>{
+    best[k] = outcomes[k].reduce((a,b)=> b.price>a.price ? b : a);
+  });
+
+  const arbSum = 1/best.home.price + 1/best.draw.price + 1/best.away.price;
+  const isArb = arbSum < 1;
+  const arbProfitPct = isArb ? (1/arbSum - 1) * 100 : 0;
+
+  const avg = {};
+  ["home","draw","away"].forEach(k=>{
+    avg[k] = outcomes[k].reduce((s,x)=>s+x.price,0)/outcomes[k].length;
+  });
+
+  const valueHits = [];
+  ["home","draw","away"].forEach(k=>{
+    outcomes[k].forEach(o=>{
+      const edge = (o.price/avg[k] - 1) * 100;
+      if(edge >= 5){ valueHits.push({side:k, book:o.book, price:o.price, avg:avg[k], edge}); }
+    });
+  });
+  valueHits.sort((a,b)=>b.edge-a.edge);
+
+  return { match:m, outcomes, best, avg, isArb, arbProfitPct, valueHits };
+}
+
+function stakesForArb(best, total=100){
+  const invSum = 1/best.home.price + 1/best.draw.price + 1/best.away.price;
+  return {
+    home: (total * (1/best.home.price) / invSum).toFixed(2),
+    draw: (total * (1/best.draw.price) / invSum).toFixed(2),
+    away: (total * (1/best.away.price) / invSum).toFixed(2),
+  };
+}
+
+const LABELS = {home:"1 (Casa)", draw:"X (Pareggio)", away:"2 (Trasferta)"};
+
+function App(){
+  const [apiKey, setApiKey] = useState("");
+  const [region, setRegion] = useState("eu");
+  const [sports, setSports] = useState(DEMO_SPORTS);
+  const [selected, setSelected] = useState(DEMO_SPORTS.map(s=>s.key));
+  const [matches, setMatches] = useState(demoOdds());
+  const [loading, setLoading] = useState(false);
+  const [loadingSports, setLoadingSports] = useState(false);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState("arb");
+  const [lastScan, setLastScan] = useState(new Date());
+  const isDemo = apiKey.trim().length === 0;
+
+  const loadSports = useCallback(async ()=>{
+    if(isDemo){ setSports(DEMO_SPORTS); setSelected(DEMO_SPORTS.map(s=>s.key)); return; }
+    setLoadingSports(true); setError("");
+    try{
+      const res = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${encodeURIComponent(apiKey)}`);
+      if(!res.ok) throw new Error("Chiave non valida o quota esaurita ("+res.status+")");
+      const data = await res.json();
+      const soccer = data.filter(s=>s.group==="Soccer" && !s.key.includes("outrights"));
+      setSports(soccer);
+      setSelected(soccer.map(s=>s.key));
+    }catch(e){ setError(e.message); }
+    setLoadingSports(false);
+  },[apiKey, isDemo]);
+
+  const runScan = useCallback(async ()=>{
+    if(isDemo){ setMatches(demoOdds()); setLastScan(new Date()); return; }
+    if(selected.length===0){ setError("Seleziona almeno un campionato."); return; }
+    setLoading(true); setError("");
+    try{
+      const results = [];
+      for(const key of selected){
+        const url = `https://api.the-odds-api.com/v4/sports/${key}/odds?apiKey=${encodeURIComponent(apiKey)}&regions=${region}&markets=h2h&oddsFormat=decimal`;
+        const res = await fetch(url);
+        if(!res.ok){ continue; }
+        const data = await res.json();
+        results.push(...data);
+      }
+      setMatches(results);
+      setLastScan(new Date());
+      if(results.length===0) setError("Nessuna partita trovata per i campionati selezionati in questo momento.");
+    }catch(e){ setError("Errore durante il recupero delle quote: "+e.message); }
+    setLoading(false);
+  },[apiKey, region, selected, isDemo]);
+
+  const toggleLeague = (key)=>{
+    setSelected(prev => prev.includes(key) ? prev.filter(k=>k!==key) : [...prev, key]);
+  };
+
+  const analyzed = useMemo(()=> matches.map(analyzeMatch).filter(Boolean), [matches]);
+  const arbs = useMemo(()=> analyzed.filter(a=>a.isArb).sort((a,b)=>b.arbProfitPct-a.arbProfitPct), [analyzed]);
+  const values = useMemo(()=> analyzed.filter(a=>a.valueHits.length>0), [analyzed]);
+
+  return (
+    <div className="app">
+      <div className="header">
+        <div>
+          <div className="brand-eyebrow">Segnali quote &middot; calcio</div>
+          <h1 className="brand-title">Odds <span>Scanner</span></h1>
+        </div>
+        <div className="scan-status">
+          {isDemo ? <span className="demo-tag">Dati demo</span> :
+            <>Ultima scansione<br/><b>{lastScan.toLocaleTimeString("it-IT")}</b></>}
+        </div>
+      </div>
+
+      <div className="panel">
+        <p className="panel-title">Configurazione</p>
+        <div className="config-grid">
+          <div>
+            <label>API key (The Odds API)</label>
+            <input type="password" placeholder="Incolla qui la tua key — lascia vuoto per la demo"
+              value={apiKey} onChange={e=>setApiKey(e.target.value)} />
+          </div>
+          <div>
+            <label>Regione bookmaker</label>
+            <select value={region} onChange={e=>setRegion(e.target.value)}>
+              <option value="eu">Europa</option>
+              <option value="uk">Regno Unito</option>
+              <option value="us">USA</option>
+              <option value="au">Australia</option>
+            </select>
+          </div>
+          <div>
+            <label>Soglia value bet</label>
+            <select disabled>
+              <option>+5% sopra la media di mercato</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="leagues-box">
+          <label>Campionati {isDemo ? "(demo)" : `(${selected.length}/${sports.length} selezionati)`}</label>
+          <div className="leagues-list">
+            {sports.map(s=>(
+              <div key={s.key} className={"league-chip"+(selected.includes(s.key)?" on":"")}
+                onClick={()=>toggleLeague(s.key)}>{s.title}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="btn-row">
+          <button onClick={loadSports} disabled={loadingSports || isDemo}>
+            {loadingSports ? "Carico…" : "Aggiorna elenco campionati"}
+          </button>
+          <button className="primary" onClick={runScan} disabled={loading}>
+            {loading ? "Scansione in corso…" : "Scansiona quote"}
+          </button>
+        </div>
+        <p className="hint">
+          {isDemo
+            ? <>Stai vedendo dati di esempio. Registrati su <a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a>, copia la tua API key gratuita e incollala sopra per usare quote reali.</>
+            : "Ogni scansione consuma richieste dalla tua quota mensile (una per campionato selezionato)."}
+        </p>
+        {error && <p className="hint" style={{color:"var(--bad)"}}>{error}</p>}
+      </div>
+
+      <div className="tabs">
+        <div className={"tab"+(tab==="arb"?" active":"")} onClick={()=>setTab("arb")}>
+          Arbitraggi <span className="count">{arbs.length}</span>
+        </div>
+        <div className={"tab"+(tab==="value"?" active":"")} onClick={()=>setTab("value")}>
+          Value bet <span className="count">{values.length}</span>
+        </div>
+        <div className={"tab"+(tab==="board"?" active":"")} onClick={()=>setTab("board")}>
+          Tabellone completo <span className="count">{analyzed.length}</span>
+        </div>
+      </div>
+
+      {tab==="arb" && (
+        arbs.length===0 ? <div className="empty">Nessun arbitraggio trovato in questa scansione.</div> :
+        arbs.map(a=>{
+          const stakes = stakesForArb(a.best);
+          return (
+            <div className="card arb" key={a.match.id}>
+              <div className="card-top">
+                <div>
+                  <div className="match-name">{a.match.home_team} — {a.match.away_team}</div>
+                  <div className="match-meta">{new Date(a.match.commence_time).toLocaleString("it-IT")}</div>
+                </div>
+                <div className="edge-badge arb">+{a.arbProfitPct.toFixed(2)}% garantito</div>
+              </div>
+              <div className="outcomes">
+                {["home","draw","away"].map(k=>(
+                  <div className="outcome" key={k}>
+                    <div className="outcome-label">{LABELS[k]}</div>
+                    <div className="outcome-odds">{a.best[k].price.toFixed(2)}</div>
+                    <div className="outcome-book">{a.best[k].book}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="stake-line">
+                Su una puntata totale di 100€: 1 → {stakes.home}€ &nbsp;|&nbsp; X → {stakes.draw}€ &nbsp;|&nbsp; 2 → {stakes.away}€ (da piazzare sui rispettivi bookmaker sopra)
+              </div>
+            </div>
+          );
+        })
+      )}
+
+      {tab==="value" && (
+        values.length===0 ? <div className="empty">Nessuna quota si scosta abbastanza dalla media di mercato in questa scansione.</div> :
+        values.map(a=>(
+          <div className="card value" key={a.match.id}>
+            <div className="card-top">
+              <div>
+                <div className="match-name">{a.match.home_team} — {a.match.away_team}</div>
+                <div className="match-meta">{new Date(a.match.commence_time).toLocaleString("it-IT")}</div>
+              </div>
+              <div className="edge-badge value">{a.valueHits.length} segnale{a.valueHits.length>1?"i":""}</div>
+            </div>
+            <div className="outcomes">
+              {a.valueHits.slice(0,3).map((v,i)=>(
+                <div className="outcome hit" key={i}>
+                  <div className="outcome-label">{LABELS[v.side]}</div>
+                  <div className="outcome-odds">{v.price.toFixed(2)} <span style={{fontSize:11,color:"var(--muted)"}}>(+{v.edge.toFixed(1)}%)</span></div>
+                  <div className="outcome-book">{v.book} · media {v.avg.toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+
+      {tab==="board" && (
+        <div className="panel board">
+          <table>
+            <thead>
+              <tr><th>Partita</th><th>1 miglior quota</th><th>X miglior quota</th><th>2 miglior quota</th><th>Bookmaker consultati</th></tr>
+            </thead>
+            <tbody>
+              {analyzed.map(a=>(
+                <tr key={a.match.id}>
+                  <td>{a.match.home_team} - {a.match.away_team}</td>
+                  <td className="best">{a.best.home.price.toFixed(2)} <span style={{color:"var(--muted)"}}>({a.best.home.book})</span></td>
+                  <td className="best">{a.best.draw.price.toFixed(2)} <span style={{color:"var(--muted)"}}>({a.best.draw.book})</span></td>
+                  <td className="best">{a.best.away.price.toFixed(2)} <span style={{color:"var(--muted)"}}>({a.best.away.book})</span></td>
+                  <td>{a.match.bookmakers.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="footer-note">
+        Strumento di analisi quote, non un consiglio di investimento. Gli arbitraggi individuati sono calcolati sui dati ricevuti dall'API e possono cambiare prima del piazzamento; verifica sempre le quote direttamente sul sito del bookmaker.<br/>
+        Il gioco d'azzardo può causare dipendenza patologica — gioca con responsabilità.
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
