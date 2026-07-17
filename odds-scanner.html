@@ -260,6 +260,8 @@ function App(){
   const [lastScan, setLastScan] = useState(new Date());
   const [slipProfile, setSlipProfile] = useState("bilanciata");
   const [slipSize, setSlipSize] = useState(3);
+  const [debugLog, setDebugLog] = useState([]);
+  const [showDebug, setShowDebug] = useState(false);
   const isDemo = apiKey.trim().length === 0;
 
   const categories = useMemo(()=>groupByCategory(sports), [sports]);
@@ -279,21 +281,33 @@ function App(){
   },[apiKey, isDemo]);
 
   const runScan = useCallback(async ()=>{
-    if(isDemo){ setMatches(demoOdds()); setLastScan(new Date()); return; }
+    if(isDemo){ setMatches(demoOdds()); setLastScan(new Date()); setDebugLog([]); return; }
     if(selected.length===0){ setError("Seleziona almeno un campionato."); return; }
     setLoading(true); setError("");
+    const log = [];
     try{
       const results = [];
       for(const key of selected){
         const url = `https://api.the-odds-api.com/v4/sports/${key}/odds?apiKey=${encodeURIComponent(apiKey)}&regions=${region}&markets=h2h&oddsFormat=decimal`;
-        const res = await fetch(url);
-        if(!res.ok){ continue; }
-        const data = await res.json();
-        results.push(...data);
+        try{
+          const res = await fetch(url);
+          if(!res.ok){
+            let detail = String(res.status);
+            try{ const errBody = await res.json(); if(errBody && errBody.message) detail += " — " + errBody.message; }catch(_e){}
+            log.push({key, status:"errore "+detail, count:0});
+            continue;
+          }
+          const data = await res.json();
+          log.push({key, status:"ok", count:data.length});
+          results.push(...data);
+        }catch(inner){
+          log.push({key, status:"errore rete: "+inner.message, count:0});
+        }
       }
       setMatches(results);
       setLastScan(new Date());
-      if(results.length===0) setError("Nessuna partita trovata per i campionati selezionati in questo momento.");
+      setDebugLog(log);
+      if(results.length===0) setError("Nessuna partita trovata per i campionati selezionati in questo momento. Guarda il dettaglio scansione qui sotto per capire il motivo campionato per campionato.");
     }catch(e){ setError("Errore durante il recupero delle quote: "+e.message); }
     setLoading(false);
   },[apiKey, region, selected, isDemo]);
@@ -390,6 +404,27 @@ function App(){
             : "Ogni scansione consuma una richiesta di quota per ogni campionato selezionato: con molti campionati (tutti i continenti) puoi esaurire rapidamente il piano gratuito da 500/mese."}
         </p>
         {error && <p className="hint" style={{color:"var(--bad)"}}>{error}</p>}
+        {!isDemo && debugLog.length>0 && (
+          <div style={{marginTop:14}}>
+            <button className="cat-toggle" onClick={()=>setShowDebug(s=>!s)}>
+              {showDebug ? "Nascondi dettaglio scansione" : "Mostra dettaglio scansione ("+debugLog.length+" campionati)"}
+            </button>
+            {showDebug && (
+              <table style={{marginTop:10}}>
+                <thead><tr><th>Campionato (key API)</th><th>Esito</th><th>Eventi trovati</th></tr></thead>
+                <tbody>
+                  {debugLog.map((d,i)=>(
+                    <tr key={i}>
+                      <td>{d.key}</td>
+                      <td style={{color: d.status==="ok" ? "var(--arb)" : "var(--bad)"}}>{d.status}</td>
+                      <td>{d.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="tabs">
