@@ -1134,6 +1134,239 @@ function OrdiniEffettuati({purchaseOrders,setPurchaseOrders,suppliers}){
   );
 }
 
+
+// ─── ANDAMENTO ───────────────────────────────────────────────────────────────
+function Andamento({sales,expenses}){
+  const now=new Date();
+  const localY=now.getFullYear();
+  const localM=now.getMonth();
+  const localD=now.getDate();
+  const pad=n=>String(n).padStart(2,'0');
+  const toMonth=(y,m)=>`${y}-${pad(m+1)}`;
+  const toDay=(y,m,d)=>`${y}-${pad(m+1)}-${pad(d)}`;
+  const todayStr=toDay(localY,localM,localD);
+  const thisWeekMon=(()=>{const d=new Date(localY,localM,localD);d.setDate(d.getDate()-((d.getDay()+6)%7));return d;})();
+
+  const [view,setView]=useState("giorno"); // giorno | settimana | mese
+
+  // ── Calcolo metriche per un insieme di vendite ──
+  const calcMetrics=(salesArr,expArr)=>{
+    let lordo=0,imponibile=0,costGoods=0,sconti=0;
+    salesArr.forEach(s=>{
+      const l=s.finalPrice||(s.qty*s.sellPrice);
+      const {imponibile:imp}=scorporaIva(l,s.iva||22);
+      const buyN=s.buyPrice/(1+(s.iva||22)/100);
+      lordo+=l; imponibile+=imp; costGoods+=s.qty*buyN;
+      sconti+=(s.discountAmount||0);
+    });
+    const margine=imponibile-costGoods;
+    const margPct=imponibile>0?(margine/imponibile*100):0;
+    const spese=(expArr||[]).reduce((a,e)=>a+e.amount,0);
+    const risultato=margine-spese;
+    return{lordo,imponibile,margine,margPct,spese,risultato,sconti,nVendite:salesArr.length};
+  };
+
+  // ── Filtra vendite per giorno ──
+  const salesDay=(y,m,d)=>sales.filter(s=>s.date.startsWith(toDay(y,m,d)));
+  // ── Filtra vendite per settimana (da lunedì) ──
+  const salesWeek=(startDate)=>{
+    const end=new Date(startDate); end.setDate(end.getDate()+7);
+    return sales.filter(s=>{const d=new Date(s.date);return d>=startDate&&d<end;});
+  };
+  // ── Filtra vendite per mese ──
+  const salesMonth=(y,m)=>sales.filter(s=>s.date.startsWith(toMonth(y,m)));
+  const expensesMonth=(y,m)=>expenses.filter(e=>e.month===toMonth(y,m));
+
+  // ── Dati correnti ──
+  const currentData=(()=>{
+    if(view==="giorno") return calcMetrics(salesDay(localY,localM,localD),[]);
+    if(view==="settimana") return calcMetrics(salesWeek(thisWeekMon),[]);
+    return calcMetrics(salesMonth(localY,localM),expensesMonth(localY,localM));
+  })();
+
+  // ── Dati anni precedenti ──
+  const prevYears=[1,2].map(offset=>{
+    const y=localY-offset;
+    if(view==="giorno"){
+      return{year:y,...calcMetrics(salesDay(y,localM,localD),[])};
+    }
+    if(view==="settimana"){
+      // Stessa settimana dell'anno precedente (stesso lunedì ISO)
+      const prevMon=new Date(thisWeekMon); prevMon.setFullYear(prevMon.getFullYear()-offset);
+      return{year:y,...calcMetrics(salesWeek(prevMon),[])};
+    }
+    return{year:y,...calcMetrics(salesMonth(y,localM),expensesMonth(y,localM))};
+  });
+
+  // ── Ultimi 30 giorni per grafico a barre ──
+  const last30=Array.from({length:30},(_,i)=>{
+    const d=new Date(localY,localM,localD-29+i);
+    const s=salesDay(d.getFullYear(),d.getMonth(),d.getDate());
+    const m=calcMetrics(s,[]);
+    return{label:`${pad(d.getDate())}/${pad(d.getMonth()+1)}`,lordo:m.lordo,margine:m.margine};
+  });
+  const maxLordo=Math.max(...last30.map(d=>d.lordo),1);
+
+  // ── Confronto crescita ──
+  const crescita=(curr,prev)=>prev>0?((curr-prev)/prev*100).toFixed(1):null;
+
+  const viewLabel=view==="giorno"?"Oggi "+todayStr:view==="settimana"?"Settimana corrente":"Mese "+toMonth(localY,localM);
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Selettore vista */}
+      <div style={{display:"flex",gap:8}}>
+        {["giorno","settimana","mese"].map(v=>(
+          <button key={v} onClick={()=>setView(v)}
+            style={{padding:"8px 20px",borderRadius:10,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,
+              background:view===v?"#D96C05":"#231A12",color:view===v?"white":"#A08060",
+              boxShadow:view===v?"0 2px 8px rgba(217,108,5,0.3)":"none"}}>
+            {v.charAt(0).toUpperCase()+v.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* Cards periodo corrente */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,color:"#A08060",marginBottom:12,fontWeight:600}}>{viewLabel}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
+          {[
+            {label:"Fatturato lordo",value:fmt(currentData.lordo),color:"#D96C05",icon:"💰"},
+            {label:"Fatturato netto",value:fmt(currentData.imponibile),color:"#F28C35",icon:"📊"},
+            {label:"Margine €",value:fmt(currentData.margine),color:currentData.margine>=0?"#5CB85C":"#E05252",icon:"📈"},
+            {label:"Margine %",value:currentData.margPct.toFixed(1)+"%",color:currentData.margPct>=30?"#5CB85C":currentData.margPct>=15?"#E8C44A":"#E05252",icon:"📉"},
+            ...(view==="mese"?[
+              {label:"Spese fisse",value:fmt(currentData.spese),color:"#E8C44A",icon:"💳"},
+              {label:"Risultato netto",value:fmt(currentData.risultato),color:currentData.risultato>=0?"#5CB85C":"#E05252",icon:"🏁"},
+            ]:[]),
+            {label:"N° vendite",value:currentData.nVendite,color:"#A78BFA",icon:"🛒"},
+          ].map(({label,value,color,icon})=>(
+            <div key={label} style={{background:"#1A1410",borderRadius:10,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:4}}>{icon} {label}</div>
+              <div style={{fontSize:20,fontWeight:800,color}}>{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Confronto anni precedenti */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:12}}>📅 Confronto anni precedenti</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead>
+              <tr style={{borderBottom:"1px solid #3D2E1E"}}>
+                <th style={{textAlign:"left",padding:"6px 10px",color:"#A08060",fontWeight:600}}>Periodo</th>
+                <th style={{textAlign:"right",padding:"6px 10px",color:"#A08060",fontWeight:600}}>Fatturato lordo</th>
+                <th style={{textAlign:"right",padding:"6px 10px",color:"#A08060",fontWeight:600}}>Margine €</th>
+                <th style={{textAlign:"right",padding:"6px 10px",color:"#A08060",fontWeight:600}}>Margine %</th>
+                {view==="mese"&&<th style={{textAlign:"right",padding:"6px 10px",color:"#A08060",fontWeight:600}}>Risultato</th>}
+                <th style={{textAlign:"right",padding:"6px 10px",color:"#A08060",fontWeight:600}}>Δ Fatturato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Anno corrente */}
+              <tr style={{borderBottom:"1px solid #3D2E1E",background:"#1E2E1E"}}>
+                <td style={{padding:"8px 10px",fontWeight:700,color:"#5CB85C"}}>{localY} (attuale)</td>
+                <td style={{textAlign:"right",padding:"8px 10px",fontWeight:700,color:"#D96C05"}}>{fmt(currentData.lordo)}</td>
+                <td style={{textAlign:"right",padding:"8px 10px",color:"#5CB85C"}}>{fmt(currentData.margine)}</td>
+                <td style={{textAlign:"right",padding:"8px 10px",color:"#5CB85C"}}>{currentData.margPct.toFixed(1)}%</td>
+                {view==="mese"&&<td style={{textAlign:"right",padding:"8px 10px",color:currentData.risultato>=0?"#5CB85C":"#E05252"}}>{fmt(currentData.risultato)}</td>}
+                <td style={{textAlign:"right",padding:"8px 10px",color:"#A08060"}}>—</td>
+              </tr>
+              {prevYears.map(py=>{
+                const delta=crescita(currentData.lordo,py.lordo);
+                const hasData=py.lordo>0||py.nVendite>0;
+                return(
+                  <tr key={py.year} style={{borderBottom:"1px solid #3D2E1E",opacity:hasData?1:0.4}}>
+                    <td style={{padding:"8px 10px",color:"#A08060"}}>{py.year}{!hasData&&" (nessun dato)"}</td>
+                    <td style={{textAlign:"right",padding:"8px 10px",color:"#F5EDE3"}}>{fmt(py.lordo)}</td>
+                    <td style={{textAlign:"right",padding:"8px 10px",color:"#A08060"}}>{fmt(py.margine)}</td>
+                    <td style={{textAlign:"right",padding:"8px 10px",color:"#A08060"}}>{py.margPct.toFixed(1)}%</td>
+                    {view==="mese"&&<td style={{textAlign:"right",padding:"8px 10px",color:"#A08060"}}>{fmt(py.risultato)}</td>}
+                    <td style={{textAlign:"right",padding:"8px 10px"}}>
+                      {delta!==null?(
+                        <span style={{color:parseFloat(delta)>=0?"#5CB85C":"#E05252",fontWeight:700}}>
+                          {parseFloat(delta)>=0?"▲":"▼"} {Math.abs(delta)}%
+                        </span>
+                      ):"—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!prevYears.some(py=>py.lordo>0)&&(
+          <div style={{textAlign:"center",padding:"12px 0",fontSize:12,color:"#A08060",marginTop:8}}>
+            I dati degli anni precedenti appariranno automaticamente man mano che accumuli storico nel gestionale.
+          </div>
+        )}
+      </div>
+
+      {/* Grafico ultimi 30 giorni */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:14}}>📊 Andamento ultimi 30 giorni</div>
+        <div style={{display:"flex",alignItems:"flex-end",gap:3,height:120,overflowX:"auto",paddingBottom:4}}>
+          {last30.map((d,i)=>{
+            const h=maxLordo>0?(d.lordo/maxLordo*100):0;
+            const hm=maxLordo>0?(d.margine/maxLordo*100):0;
+            const isToday=i===29;
+            return(
+              <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,minWidth:18,position:"relative"}}>
+                <div title={`${d.label}: ${fmt(d.lordo)}`} style={{width:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end",height:100,gap:1}}>
+                  {d.lordo>0&&(
+                    <>
+                      <div style={{width:"100%",height:Math.max(2,hm)+"%",background:"#5CB85C",borderRadius:"2px 2px 0 0",opacity:0.8}}/>
+                      <div style={{width:"100%",height:Math.max(2,h-hm)+"%",background:isToday?"#F28C35":"#D96C05",borderRadius:hm>0?"0":"2px 2px 0 0",opacity:isToday?1:0.7}}/>
+                    </>
+                  )}
+                  {d.lordo===0&&<div style={{width:"100%",height:2,background:"#3D2E1E",borderRadius:2}}/>}
+                </div>
+                {(i===0||i===7||i===14||i===21||i===29)&&(
+                  <div style={{fontSize:8,color:"#A08060",marginTop:3,whiteSpace:"nowrap",transform:"rotate(-45deg)",transformOrigin:"top left"}}>{d.label}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:16,marginTop:20,fontSize:11,color:"#A08060"}}>
+          <span><span style={{display:"inline-block",width:10,height:10,background:"#D96C05",borderRadius:2,marginRight:4}}/>Fatturato lordo</span>
+          <span><span style={{display:"inline-block",width:10,height:10,background:"#5CB85C",borderRadius:2,marginRight:4}}/>Margine</span>
+        </div>
+      </div>
+
+      {/* Dettaglio giorni del mese corrente */}
+      {view==="mese"&&(()=>{
+        const days=Array.from({length:localD},(_,i)=>{
+          const d=i+1;
+          const s=salesDay(localY,localM,d);
+          const m=calcMetrics(s,[]);
+          return{d,...m,hasData:s.length>0};
+        }).filter(d=>d.hasData).reverse();
+        if(days.length===0)return null;
+        return(
+          <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📋 Dettaglio giornaliero — {toMonth(localY,localM)}</div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr 1fr auto",gap:"4px 12px",fontSize:11,color:"#A08060",marginBottom:6,padding:"0 4px"}}>
+              <span>Giorno</span><span style={{textAlign:"right"}}>Fatturato</span><span style={{textAlign:"right"}}>Margine €</span><span style={{textAlign:"right"}}>Margine %</span><span style={{textAlign:"right"}}>Vendite</span>
+            </div>
+            {days.map(d=>(
+              <div key={d.d} style={{display:"grid",gridTemplateColumns:"auto 1fr 1fr 1fr auto",gap:"4px 12px",padding:"6px 4px",borderBottom:"1px solid #3D2E1E",fontSize:12,background:d.d===localD?"#1E2E1E":"transparent",borderRadius:d.d===localD?6:0}}>
+                <span style={{color:d.d===localD?"#5CB85C":"#A08060",fontWeight:d.d===localD?700:400}}>{pad(d.d)}/{pad(localM+1)}{d.d===localD?" ★":""}</span>
+                <span style={{textAlign:"right",fontWeight:600,color:"#D96C05"}}>{fmt(d.lordo)}</span>
+                <span style={{textAlign:"right",color:d.margine>=0?"#5CB85C":"#E05252"}}>{fmt(d.margine)}</span>
+                <span style={{textAlign:"right",color:d.margPct>=30?"#5CB85C":d.margPct>=15?"#E8C44A":"#E05252"}}>{d.margPct.toFixed(1)}%</span>
+                <span style={{textAlign:"right",color:"#A08060"}}>{d.nVendite}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
 // ─── REPORT ──────────────────────────────────────────────────────────────────
 function Report({products,sales,expenses,getSalesByProduct,purchaseOrders}){
   const [selMonth,setSelMonth]=useState(thisMonth());
@@ -1887,6 +2120,7 @@ function App(){
     {id:"ordini",label:"Proposta Ordini",icon:"📋"},
     {id:"fornitori",label:"Fornitori",icon:"🏭"},
     {id:"acquisti",label:"Ordini pagati",icon:"🧾"},
+    {id:"andamento",label:"Andamento",icon:"📈"},
     {id:"report",label:"Report",icon:"📊"},
     {id:"fedelta",label:"Fedeltà",icon:"⭐"},
     {id:"backup",label:"Backup",icon:"💾"},
@@ -1911,6 +2145,7 @@ function App(){
         {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings} suppliers={suppliers} setSuppliers={setSuppliers}/>}
         {tab==="fornitori"&&<Fornitori suppliers={suppliers} setSuppliers={setSuppliers} products={products} setProducts={setProducts}/>}
         {tab==="acquisti"&&<OrdiniEffettuati purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} suppliers={suppliers}/>}
+        {tab==="andamento"&&<Andamento sales={sales} expenses={expenses}/>}
         {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct} purchaseOrders={purchaseOrders}/>}
         {tab==="fedelta"&&<Fedelta customers={customers} setCustomers={setCustomers} sales={sales}/>}
         {tab==="backup"&&<Backup products={products} sales={sales} expenses={expenses} settings={settings} setProducts={setProducts} setSales={setSales} setExpenses={setExpenses} setSettings={setSettings}/>}
