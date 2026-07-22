@@ -1157,192 +1157,279 @@ function OrdiniEffettuati({purchaseOrders,setPurchaseOrders,suppliers}){
 // ─── CONTROLLO FINANZIARIO ───────────────────────────────────────────────────
 function ControlloFinanziario({sales,expenses,purchaseOrders,finance,setFinance}){
   const [selMonth,setSelMonth]=useState(thisMonth());
-  const [form,setForm]=useState({type:"entrata",category:"altro",amount:"",notes:"",date:new Date().toISOString().slice(0,10)});
+  const [editInitial,setEditInitial]=useState(false);
+  const [editActual,setEditActual]=useState(false);
+  const [initialInput,setInitialInput]=useState("");
+  const [actualInput,setActualInput]=useState("");
+  const [movForm,setMovForm]=useState({date:new Date().toISOString().slice(0,10),type:"prelievo",amount:"",notes:""});
 
   const months=[...new Set([thisMonth(),...sales.map(s=>s.date.slice(0,7)),...(purchaseOrders||[]).map(o=>o.date?.slice(0,7)).filter(Boolean)])].sort().reverse();
 
-  // Saldo iniziale per il mese
-  const getInitialBalance=()=>(finance?.initialBalance||{})[selMonth]||0;
-  const setInitialBalance=(val)=>{
-    setFinance(f=>({...f,initialBalance:{...(f?.initialBalance||{}),[selMonth]:parseFloat(val)||0}}));
+  // Dati salvati per il mese
+  const monthData=(finance?.months||{})[selMonth]||{initialBalance:0,actualBalance:0,movements:[]};
+  const saveMonthData=(patch)=>{
+    setFinance(f=>({...f,months:{...(f?.months||{}),[selMonth]:{...monthData,...patch}}}));
   };
 
-  // Movimenti manuali (stipendi, prelievi, entrate extra)
-  const monthMovements=(finance?.movements||[]).filter(m=>m.date?.slice(0,7)===selMonth);
-
-  const addMovement=()=>{
-    if(!form.amount)return;
-    const m={...form,amount:parseFloat(form.amount),id:uid()};
-    setFinance(f=>({...f,movements:[...(f?.movements||[]),m]}));
-    setForm(f=>({...f,amount:"",notes:""}));
-  };
-  const delMovement=(id)=>setFinance(f=>({...f,movements:(f?.movements||[]).filter(m=>m.id!==id)}));
-
-  // ── Calcolo automatico dal gestionale ──
+  // ── COLONNA PREVISTO — dati automatici dal gestionale ──
   const monthSales=sales.filter(s=>s.date.startsWith(selMonth));
-  // Incassi per metodo
   let incassoBancomat=0,incassoContante=0,incassoAltro=0;
   monthSales.forEach(s=>{
     const v=s.finalPrice||(s.qty*s.sellPrice);
     if(s.paymentMethod==="contante")incassoContante+=v;
     else if(s.paymentMethod==="altro")incassoAltro+=v;
-    else incassoBancomat+=v; // default bancomat
+    else incassoBancomat+=v;
   });
   const incassoTotale=incassoBancomat+incassoContante+incassoAltro;
-
   const speseFixe=expenses.filter(e=>e.month===selMonth).reduce((a,e)=>a+e.amount,0);
   const ordiniPagati=(purchaseOrders||[]).filter(o=>o.date?.slice(0,7)===selMonth).reduce((a,o)=>a+o.amount,0);
+  const prelievi=monthData.movements.filter(m=>m.type==="prelievo").reduce((a,m)=>a+m.amount,0);
+  const entrateExtra=monthData.movements.filter(m=>m.type==="entrata").reduce((a,m)=>a+m.amount,0);
+  const usciteExtra=monthData.movements.filter(m=>m.type==="uscita").reduce((a,m)=>a+m.amount,0);
+  const prevEntrate=incassoTotale+entrateExtra;
+  const prevUscite=speseFixe+ordiniPagati+prelievi+usciteExtra;
+  const prevSaldoFine=monthData.initialBalance+prevEntrate-prevUscite;
 
-  // Movimenti manuali
-  const prelievi=monthMovements.filter(m=>m.type==="prelievo").reduce((a,m)=>a+m.amount,0);
-  const entrateExtra=monthMovements.filter(m=>m.type==="entrata").reduce((a,m)=>a+m.amount,0);
-  const usciteExtra=monthMovements.filter(m=>m.type==="uscita").reduce((a,m)=>a+m.amount,0);
+  // ── COLONNA EFFETTIVO — movimenti reali inseriti manualmente ──
+  const actualMovements=(finance?.actualMovements||[]).filter(m=>m.date?.slice(0,7)===selMonth).sort((a,b)=>a.date.localeCompare(b.date));
+  const addActualMovement=()=>{
+    if(!movForm.amount)return;
+    const m={...movForm,amount:parseFloat(movForm.amount),id:uid()};
+    setFinance(f=>({...f,actualMovements:[...(f?.actualMovements||[]),m]}));
+    setMovForm(f=>({...f,amount:"",notes:""}));
+  };
+  const delActualMovement=(id)=>setFinance(f=>({...f,actualMovements:(f?.actualMovements||[]).filter(m=>m.id!==id)}));
 
-  const saldoIniziale=getInitialBalance();
-  const totaleEntrate=incassoTotale+entrateExtra;
-  const totaleUscite=speseFixe+ordiniPagati+prelievi+usciteExtra;
-  const saldoFinale=saldoIniziale+totaleEntrate-totaleUscite;
+  // Calcolo saldo effettivo progressivo
+  const actualRunning=actualMovements.reduce((acc,m)=>{
+    const segno=["versamento","entrata"].includes(m.type)?1:-1;
+    return acc+segno*m.amount;
+  },monthData.actualBalance||0);
 
-  const [editBalance,setEditBalance]=useState(false);
-  const [balanceInput,setBalanceInput]=useState("");
+  const movTypeConfig={
+    versamento:{label:"📥 Versamento",color:"#5CB85C",sign:1},
+    prelievo:{label:"💰 Prelievo stipendio",color:"#E05252",sign:-1},
+    pagamento:{label:"💳 Pagamento",color:"#E05252",sign:-1},
+    entrata:{label:"➕ Entrata extra",color:"#5CB85C",sign:1},
+    uscita:{label:"➖ Uscita extra",color:"#E05252",sign:-1},
+  };
+
+  const colStyle={flex:1,minWidth:280,display:"flex",flexDirection:"column",gap:12};
+  const cardStyle={background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16};
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {/* Selettore mese */}
-      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
         <label style={{fontSize:12,color:"#A08060"}}>Mese:</label>
         <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>
           {months.map(m=><option key={m}>{m}</option>)}
         </select>
       </div>
 
-      {/* Saldo iniziale */}
-      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#D96C05"}}>🏦 Saldo conto inizio mese</div>
-          <button onClick={()=>{setEditBalance(!editBalance);setBalanceInput(getInitialBalance().toString());}}
-            style={{background:"#3D2E1E",color:"#D96C05",border:"none",borderRadius:6,padding:"4px 12px",fontSize:12,cursor:"pointer"}}>
-            {editBalance?"Annulla":"Modifica"}
-          </button>
-        </div>
-        {editBalance?(
-          <div style={{display:"flex",gap:8}}>
-            <input type="number" step="0.01" value={balanceInput} onChange={e=>setBalanceInput(e.target.value)}
-              placeholder="Saldo al 1° del mese" style={{...iStyle,flex:1}}/>
-            <button onClick={()=>{setInitialBalance(balanceInput);setEditBalance(false);}}
-              style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:700,cursor:"pointer"}}>Salva</button>
-          </div>
-        ):(
-          <div style={{fontSize:28,fontWeight:900,color:"#F5EDE3"}}>{fmt(saldoIniziale)}</div>
-        )}
-      </div>
+      {/* Due colonne */}
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"flex-start"}}>
 
-      {/* Riepilogo entrate */}
-      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#5CB85C",marginBottom:12}}>📥 Entrate</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>💳 Incassi bancomat</span>
-            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(incassoBancomat)}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>💵 Incassi contante</span>
-            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(incassoContante)}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>📱 Incassi altro</span>
-            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(incassoAltro)}</span>
-          </div>
-          {entrateExtra>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>➕ Entrate extra</span>
-            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(entrateExtra)}</span>
-          </div>}
-          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:15,fontWeight:800}}>
-            <span>Totale entrate</span>
-            <span style={{color:"#5CB85C"}}>{fmt(totaleEntrate)}</span>
-          </div>
-        </div>
-      </div>
+        {/* ── COLONNA PREVISTO ── */}
+        <div style={colStyle}>
+          <div style={{...cardStyle,borderColor:"#D96C05"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#D96C05",marginBottom:14}}>📊 Previsto (automatico)</div>
 
-      {/* Riepilogo uscite */}
-      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#E05252",marginBottom:12}}>📤 Uscite</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>📦 Ordini pagati (acquisti)</span>
-            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(ordiniPagati)}</span>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>💳 Spese fisse</span>
-            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(speseFixe)}</span>
-          </div>
-          {prelievi>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>💰 Prelievi stipendio</span>
-            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(prelievi)}</span>
-          </div>}
-          {usciteExtra>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-            <span style={{color:"#A08060"}}>➖ Uscite extra</span>
-            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(usciteExtra)}</span>
-          </div>}
-          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:15,fontWeight:800}}>
-            <span>Totale uscite</span>
-            <span style={{color:"#E05252"}}>{fmt(totaleUscite)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Saldo finale */}
-      <div style={{background:saldoFinale>=0?"#1E2E1E":"#2E1A0E",border:"1px solid "+(saldoFinale>=0?"#2E5E2E":"#7A3B0A"),borderRadius:12,padding:20,textAlign:"center"}}>
-        <div style={{fontSize:12,color:"#A08060",marginBottom:6}}>💰 Saldo stimato fine mese</div>
-        <div style={{fontSize:36,fontWeight:900,color:saldoFinale>=0?"#5CB85C":"#E05252"}}>{fmt(saldoFinale)}</div>
-        <div style={{fontSize:11,color:"#A08060",marginTop:6}}>Saldo iniziale {fmt(saldoIniziale)} + entrate {fmt(totaleEntrate)} - uscite {fmt(totaleUscite)}</div>
-      </div>
-
-      {/* Form movimenti manuali */}
-      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:12}}>➕ Aggiungi movimento manuale</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:10,alignItems:"flex-end"}}>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Data</label>
-            <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Tipo</label>
-            <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={iStyle}>
-              <option value="prelievo">💰 Prelievo stipendio</option>
-              <option value="entrata">📥 Entrata extra</option>
-              <option value="uscita">📤 Uscita extra</option>
-            </select>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Importo €</label>
-            <input type="number" step="0.01" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" style={iStyle}/>
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:4}}>
-            <label style={{fontSize:11,color:"#A08060"}}>Note</label>
-            <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="es. Stipendio luglio" style={iStyle}/>
-          </div>
-          <button onClick={addMovement} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Aggiungi</button>
-        </div>
-      </div>
-
-      {/* Lista movimenti manuali */}
-      {monthMovements.length>0&&(
-        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📋 Movimenti manuali — {selMonth}</div>
-          {monthMovements.map(m=>(
-            <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
-              <span style={{color:"#A08060",fontSize:11}}>{new Date(m.date).toLocaleDateString("it-IT")}</span>
-              <span style={{flex:1}}>{m.type==="prelievo"?"💰 Prelievo":m.type==="entrata"?"📥 Entrata extra":"📤 Uscita extra"}{m.notes?" — "+m.notes:""}</span>
-              <span style={{fontWeight:700,color:m.type==="entrata"?"#5CB85C":"#E05252"}}>{m.type==="entrata"?"+":"-"}{fmt(m.amount)}</span>
-              <button onClick={()=>delMovement(m.id)} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer"}}>🗑</button>
+            {/* Saldo iniziale previsto */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:4}}>Saldo inizio mese</div>
+              {editInitial?(
+                <div style={{display:"flex",gap:6}}>
+                  <input type="number" step="0.01" value={initialInput} onChange={e=>setInitialInput(e.target.value)} style={{...iStyle,flex:1}}/>
+                  <button onClick={()=>{saveMonthData({initialBalance:parseFloat(initialInput)||0});setEditInitial(false);}} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontWeight:700}}>✓</button>
+                </div>
+              ):(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:22,fontWeight:800}}>{fmt(monthData.initialBalance||0)}</span>
+                  <button onClick={()=>{setInitialInput((monthData.initialBalance||0).toString());setEditInitial(true);}} style={{background:"#3D2E1E",color:"#D96C05",border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>Modifica</button>
+                </div>
+              )}
             </div>
-          ))}
+
+            {/* Entrate previste */}
+            <div style={{fontSize:12,fontWeight:700,color:"#5CB85C",marginBottom:6}}>📥 Entrate previste</div>
+            {[
+              ["💳 Bancomat",incassoBancomat],
+              ["💵 Contante",incassoContante],
+              ["📱 Altro",incassoAltro],
+              ...(entrateExtra>0?[["➕ Extra manuali",entrateExtra]]:[]),
+            ].map(([label,val])=>val>0&&(
+              <div key={label} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12,borderBottom:"1px solid #1A1410"}}>
+                <span style={{color:"#A08060"}}>{label}</span>
+                <span style={{color:"#5CB85C",fontWeight:600}}>{fmt(val)}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:13,fontWeight:700,marginBottom:10}}>
+              <span>Totale entrate</span><span style={{color:"#5CB85C"}}>{fmt(prevEntrate)}</span>
+            </div>
+
+            {/* Uscite previste */}
+            <div style={{fontSize:12,fontWeight:700,color:"#E05252",marginBottom:6}}>📤 Uscite previste</div>
+            {[
+              ["📦 Ordini pagati",ordiniPagati],
+              ["💳 Spese fisse",speseFixe],
+              ...(prelievi>0?[["💰 Prelievi stipendio",prelievi]]:[]),
+              ...(usciteExtra>0?[["➖ Extra manuali",usciteExtra]]:[]),
+            ].map(([label,val])=>val>0&&(
+              <div key={label} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:12,borderBottom:"1px solid #1A1410"}}>
+                <span style={{color:"#A08060"}}>{label}</span>
+                <span style={{color:"#E05252",fontWeight:600}}>{fmt(val)}</span>
+              </div>
+            ))}
+            <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:13,fontWeight:700,marginBottom:10}}>
+              <span>Totale uscite</span><span style={{color:"#E05252"}}>{fmt(prevUscite)}</span>
+            </div>
+
+            {/* Saldo finale previsto */}
+            <div style={{background:prevSaldoFine>=0?"#1E2E1E":"#2E1A0E",borderRadius:10,padding:"12px 14px",textAlign:"center",border:"1px solid "+(prevSaldoFine>=0?"#2E5E2E":"#7A3B0A")}}>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:4}}>Saldo stimato fine mese</div>
+              <div style={{fontSize:28,fontWeight:900,color:prevSaldoFine>=0?"#5CB85C":"#E05252"}}>{fmt(prevSaldoFine)}</div>
+            </div>
+          </div>
+
+          {/* Aggiunta movimenti manuali per la colonna previsto (prelievi, extra) */}
+          <div style={cardStyle}>
+            <div style={{fontSize:12,fontWeight:700,color:"#A08060",marginBottom:10}}>➕ Aggiungi prelievo/extra al previsto</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <select value={movForm.type} onChange={e=>setMovForm(f=>({...f,type:e.target.value}))} style={iStyle}>
+                <option value="prelievo">💰 Prelievo stipendio</option>
+                <option value="entrata">➕ Entrata extra</option>
+                <option value="uscita">➖ Uscita extra</option>
+              </select>
+              <div style={{display:"flex",gap:6}}>
+                <input type="date" value={movForm.date} onChange={e=>setMovForm(f=>({...f,date:e.target.value}))} style={{...iStyle,flex:1}}/>
+                <input type="number" step="0.01" value={movForm.amount} onChange={e=>setMovForm(f=>({...f,amount:e.target.value}))} placeholder="€" style={{...iStyle,width:90}}/>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={movForm.notes} onChange={e=>setMovForm(f=>({...f,notes:e.target.value}))} placeholder="Note..." style={{...iStyle,flex:1}}/>
+                <button onClick={()=>{
+                  if(!movForm.amount)return;
+                  const m={...movForm,amount:parseFloat(movForm.amount),id:uid()};
+                  saveMonthData({movements:[...monthData.movements,m]});
+                  setMovForm(f=>({...f,amount:"",notes:""}));
+                }} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer"}}>+</button>
+              </div>
+            </div>
+            {monthData.movements.length>0&&(
+              <div style={{marginTop:10}}>
+                {monthData.movements.map(m=>(
+                  <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #1A1410",fontSize:12}}>
+                    <span style={{color:"#A08060"}}>{new Date(m.date).toLocaleDateString("it-IT")}</span>
+                    <span style={{flex:1,paddingLeft:8}}>{movTypeConfig[m.type]?.label||m.type}{m.notes?" · "+m.notes:""}</span>
+                    <span style={{color:movTypeConfig[m.type]?.sign===1?"#5CB85C":"#E05252",fontWeight:600,paddingRight:8}}>{fmt(m.amount)}</span>
+                    <button onClick={()=>saveMonthData({movements:monthData.movements.filter(x=>x.id!==m.id)})} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer",fontSize:12}}>🗑</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* ── COLONNA EFFETTIVO ── */}
+        <div style={colStyle}>
+          <div style={{...cardStyle,borderColor:"#A78BFA"}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#A78BFA",marginBottom:14}}>🏦 Effettivo (reale)</div>
+
+            {/* Saldo iniziale effettivo */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:4}}>Saldo conto inizio mese (reale)</div>
+              {editActual?(
+                <div style={{display:"flex",gap:6}}>
+                  <input type="number" step="0.01" value={actualInput} onChange={e=>setActualInput(e.target.value)} style={{...iStyle,flex:1}}/>
+                  <button onClick={()=>{saveMonthData({actualBalance:parseFloat(actualInput)||0});setEditActual(false);}} style={{background:"#A78BFA",color:"white",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontWeight:700}}>✓</button>
+                </div>
+              ):(
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontSize:22,fontWeight:800}}>{fmt(monthData.actualBalance||0)}</span>
+                  <button onClick={()=>{setActualInput((monthData.actualBalance||0).toString());setEditActual(true);}} style={{background:"#3D2E1E",color:"#A78BFA",border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer"}}>Modifica</button>
+                </div>
+              )}
+            </div>
+
+            {/* Lista movimenti effettivi */}
+            <div style={{fontSize:12,fontWeight:700,color:"#A78BFA",marginBottom:8}}>📋 Movimenti reali</div>
+            {actualMovements.length===0&&<div style={{color:"#A08060",fontSize:12,marginBottom:10}}>Nessun movimento registrato.</div>}
+            {actualMovements.map((m,idx)=>{
+              const cfg=movTypeConfig[m.type]||{label:m.type,color:"#F5EDE3",sign:1};
+              const runSum=actualMovements.slice(0,idx+1).reduce((a,x)=>{
+                const s=["versamento","entrata"].includes(x.type)?1:-1;
+                return a+s*x.amount;
+              },monthData.actualBalance||0);
+              return(
+                <div key={m.id} style={{padding:"7px 0",borderBottom:"1px solid #1A1410",fontSize:12}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <span style={{color:"#A08060",marginRight:8}}>{new Date(m.date).toLocaleDateString("it-IT")}</span>
+                      <span style={{color:cfg.color,fontWeight:600}}>{cfg.label}</span>
+                      {m.notes&&<span style={{color:"#A08060"}}> · {m.notes}</span>}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{color:cfg.color,fontWeight:700}}>{cfg.sign>0?"+":"-"}{fmt(m.amount)}</span>
+                      <button onClick={()=>delActualMovement(m.id)} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer",fontSize:12}}>🗑</button>
+                    </div>
+                  </div>
+                  <div style={{fontSize:10,color:"#A08060",textAlign:"right"}}>Saldo: {fmt(runSum)}</div>
+                </div>
+              );
+            })}
+
+            {/* Saldo effettivo attuale */}
+            <div style={{background:actualRunning>=0?"#1E1A2E":"#2E1A0E",borderRadius:10,padding:"12px 14px",textAlign:"center",marginTop:10,border:"1px solid "+(actualRunning>=0?"#5A3A8A":"#7A3B0A")}}>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:4}}>Saldo effettivo attuale</div>
+              <div style={{fontSize:28,fontWeight:900,color:actualRunning>=0?"#A78BFA":"#E05252"}}>{fmt(actualRunning)}</div>
+            </div>
+
+            {/* Confronto previsto vs effettivo */}
+            {(prevSaldoFine!==0||actualRunning!==0)&&(
+              <div style={{marginTop:12,padding:"10px 14px",background:"#1A1410",borderRadius:10}}>
+                <div style={{fontSize:11,color:"#A08060",marginBottom:6}}>Δ Previsto vs Effettivo</div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+                  <span style={{color:"#A08060"}}>Differenza</span>
+                  <span style={{fontWeight:800,color:actualRunning-prevSaldoFine>=0?"#5CB85C":"#E05252"}}>
+                    {actualRunning-prevSaldoFine>=0?"▲ +":"▼ "}{fmt(Math.abs(actualRunning-prevSaldoFine))}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Form aggiunta movimento effettivo */}
+          <div style={cardStyle}>
+            <div style={{fontSize:12,fontWeight:700,color:"#A78BFA",marginBottom:10}}>➕ Registra movimento reale</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <select value={movForm.type} onChange={e=>setMovForm(f=>({...f,type:e.target.value}))} style={iStyle}>
+                <option value="versamento">📥 Versamento in banca</option>
+                <option value="prelievo">💰 Prelievo stipendio</option>
+                <option value="pagamento">💳 Pagamento (bolletta, affitto...)</option>
+                <option value="entrata">➕ Entrata extra</option>
+                <option value="uscita">➖ Uscita extra</option>
+              </select>
+              <div style={{display:"flex",gap:6}}>
+                <input type="date" value={movForm.date} onChange={e=>setMovForm(f=>({...f,date:e.target.value}))} style={{...iStyle,flex:1}}/>
+                <input type="number" step="0.01" value={movForm.amount} onChange={e=>setMovForm(f=>({...f,amount:e.target.value}))} placeholder="€" style={{...iStyle,width:90}}/>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <input value={movForm.notes} onChange={e=>setMovForm(f=>({...f,notes:e.target.value}))} placeholder="es. Versamento incassi settimana..." style={{...iStyle,flex:1}}/>
+                <button onClick={()=>{
+                  if(!movForm.amount)return;
+                  const m={...movForm,amount:parseFloat(movForm.amount),id:uid()};
+                  setFinance(f=>({...f,actualMovements:[...(f?.actualMovements||[]),m]}));
+                  setMovForm(f=>({...f,amount:"",notes:""}));
+                }} style={{background:"#A78BFA",color:"white",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,cursor:"pointer"}}>+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+
 
 // ─── ANDAMENTO ───────────────────────────────────────────────────────────────
 function Andamento({sales,expenses}){
