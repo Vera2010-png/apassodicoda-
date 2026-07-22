@@ -386,8 +386,26 @@ function Cassa({products,setProducts,sales,setSales}){
               </div>}
             </div>
 
+            {/* Sconto fedeltà automatico */}
+            {fidelityDiscount>0&&(
+              <div style={{background:"#1E2E1E",border:"1px solid #2E5E2E",borderRadius:8,padding:"8px 10px",marginBottom:6}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                  <span style={{color:"#5CB85C",fontWeight:700}}>🎁 Sconto fedeltà {selectedCustomer?.pendingDiscount?.pct}%</span>
+                  <span style={{color:"#5CB85C",fontWeight:700}}>-{fmt(fidelityDiscount)}</span>
+                </div>
+              </div>
+            )}
             <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:17,fontWeight:800,borderTop:"2px solid #3D2E1E"}}>
-              <span>Totale</span><span style={{color:"#D96C05"}}>{fmt(cartLordo)}</span>
+              <span>Totale</span><span style={{color:"#D96C05"}}>{fmt(cartLordoFinal)}</span>
+            </div>
+            {/* Metodo di pagamento */}
+            <div style={{display:"flex",gap:6,marginBottom:8}}>
+              {[["bancomat","💳 Bancomat"],["contante","💵 Contante"],["altro","📱 Altro"]].map(([val,label])=>(
+                <button key={val} onClick={()=>setPaymentMethod(val)}
+                  style={{flex:1,background:paymentMethod===val?"#D96C05":"#3D2E1E",color:paymentMethod===val?"white":"#A08060",border:"none",borderRadius:8,padding:"6px 4px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                  {label}
+                </button>
+              ))}
             </div>
             <button onClick={confirmSale} style={{width:"100%",background:"#D96C05",color:"white",border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>✅ Conferma Vendita</button>
             <button onClick={()=>{setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""}); }} style={{width:"100%",marginTop:8,background:"transparent",color:"#A08060",border:"1px solid #3D2E1E",borderRadius:10,padding:"8px",fontSize:13,cursor:"pointer"}}>Svuota carrello</button>
@@ -1135,6 +1153,197 @@ function OrdiniEffettuati({purchaseOrders,setPurchaseOrders,suppliers}){
 }
 
 
+
+// ─── CONTROLLO FINANZIARIO ───────────────────────────────────────────────────
+function ControlloFinanziario({sales,expenses,purchaseOrders,finance,setFinance}){
+  const [selMonth,setSelMonth]=useState(thisMonth());
+  const [form,setForm]=useState({type:"entrata",category:"altro",amount:"",notes:"",date:new Date().toISOString().slice(0,10)});
+
+  const months=[...new Set([thisMonth(),...sales.map(s=>s.date.slice(0,7)),...(purchaseOrders||[]).map(o=>o.date?.slice(0,7)).filter(Boolean)])].sort().reverse();
+
+  // Saldo iniziale per il mese
+  const getInitialBalance=()=>(finance?.initialBalance||{})[selMonth]||0;
+  const setInitialBalance=(val)=>{
+    setFinance(f=>({...f,initialBalance:{...(f?.initialBalance||{}),[selMonth]:parseFloat(val)||0}}));
+  };
+
+  // Movimenti manuali (stipendi, prelievi, entrate extra)
+  const monthMovements=(finance?.movements||[]).filter(m=>m.date?.slice(0,7)===selMonth);
+
+  const addMovement=()=>{
+    if(!form.amount)return;
+    const m={...form,amount:parseFloat(form.amount),id:uid()};
+    setFinance(f=>({...f,movements:[...(f?.movements||[]),m]}));
+    setForm(f=>({...f,amount:"",notes:""}));
+  };
+  const delMovement=(id)=>setFinance(f=>({...f,movements:(f?.movements||[]).filter(m=>m.id!==id)}));
+
+  // ── Calcolo automatico dal gestionale ──
+  const monthSales=sales.filter(s=>s.date.startsWith(selMonth));
+  // Incassi per metodo
+  let incassoBancomat=0,incassoContante=0,incassoAltro=0;
+  monthSales.forEach(s=>{
+    const v=s.finalPrice||(s.qty*s.sellPrice);
+    if(s.paymentMethod==="contante")incassoContante+=v;
+    else if(s.paymentMethod==="altro")incassoAltro+=v;
+    else incassoBancomat+=v; // default bancomat
+  });
+  const incassoTotale=incassoBancomat+incassoContante+incassoAltro;
+
+  const speseFixe=expenses.filter(e=>e.month===selMonth).reduce((a,e)=>a+e.amount,0);
+  const ordiniPagati=(purchaseOrders||[]).filter(o=>o.date?.slice(0,7)===selMonth).reduce((a,o)=>a+o.amount,0);
+
+  // Movimenti manuali
+  const prelievi=monthMovements.filter(m=>m.type==="prelievo").reduce((a,m)=>a+m.amount,0);
+  const entrateExtra=monthMovements.filter(m=>m.type==="entrata").reduce((a,m)=>a+m.amount,0);
+  const usciteExtra=monthMovements.filter(m=>m.type==="uscita").reduce((a,m)=>a+m.amount,0);
+
+  const saldoIniziale=getInitialBalance();
+  const totaleEntrate=incassoTotale+entrateExtra;
+  const totaleUscite=speseFixe+ordiniPagati+prelievi+usciteExtra;
+  const saldoFinale=saldoIniziale+totaleEntrate-totaleUscite;
+
+  const [editBalance,setEditBalance]=useState(false);
+  const [balanceInput,setBalanceInput]=useState("");
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {/* Selettore mese */}
+      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+        <label style={{fontSize:12,color:"#A08060"}}>Mese:</label>
+        <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{...iStyle,minWidth:140}}>
+          {months.map(m=><option key={m}>{m}</option>)}
+        </select>
+      </div>
+
+      {/* Saldo iniziale */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05"}}>🏦 Saldo conto inizio mese</div>
+          <button onClick={()=>{setEditBalance(!editBalance);setBalanceInput(getInitialBalance().toString());}}
+            style={{background:"#3D2E1E",color:"#D96C05",border:"none",borderRadius:6,padding:"4px 12px",fontSize:12,cursor:"pointer"}}>
+            {editBalance?"Annulla":"Modifica"}
+          </button>
+        </div>
+        {editBalance?(
+          <div style={{display:"flex",gap:8}}>
+            <input type="number" step="0.01" value={balanceInput} onChange={e=>setBalanceInput(e.target.value)}
+              placeholder="Saldo al 1° del mese" style={{...iStyle,flex:1}}/>
+            <button onClick={()=>{setInitialBalance(balanceInput);setEditBalance(false);}}
+              style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"8px 16px",fontWeight:700,cursor:"pointer"}}>Salva</button>
+          </div>
+        ):(
+          <div style={{fontSize:28,fontWeight:900,color:"#F5EDE3"}}>{fmt(saldoIniziale)}</div>
+        )}
+      </div>
+
+      {/* Riepilogo entrate */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#5CB85C",marginBottom:12}}>📥 Entrate</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>💳 Incassi bancomat</span>
+            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(incassoBancomat)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>💵 Incassi contante</span>
+            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(incassoContante)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>📱 Incassi altro</span>
+            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(incassoAltro)}</span>
+          </div>
+          {entrateExtra>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>➕ Entrate extra</span>
+            <span style={{fontWeight:700,color:"#5CB85C"}}>{fmt(entrateExtra)}</span>
+          </div>}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:15,fontWeight:800}}>
+            <span>Totale entrate</span>
+            <span style={{color:"#5CB85C"}}>{fmt(totaleEntrate)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Riepilogo uscite */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#E05252",marginBottom:12}}>📤 Uscite</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>📦 Ordini pagati (acquisti)</span>
+            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(ordiniPagati)}</span>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>💳 Spese fisse</span>
+            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(speseFixe)}</span>
+          </div>
+          {prelievi>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>💰 Prelievi stipendio</span>
+            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(prelievi)}</span>
+          </div>}
+          {usciteExtra>0&&<div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+            <span style={{color:"#A08060"}}>➖ Uscite extra</span>
+            <span style={{fontWeight:700,color:"#E05252"}}>{fmt(usciteExtra)}</span>
+          </div>}
+          <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",fontSize:15,fontWeight:800}}>
+            <span>Totale uscite</span>
+            <span style={{color:"#E05252"}}>{fmt(totaleUscite)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Saldo finale */}
+      <div style={{background:saldoFinale>=0?"#1E2E1E":"#2E1A0E",border:"1px solid "+(saldoFinale>=0?"#2E5E2E":"#7A3B0A"),borderRadius:12,padding:20,textAlign:"center"}}>
+        <div style={{fontSize:12,color:"#A08060",marginBottom:6}}>💰 Saldo stimato fine mese</div>
+        <div style={{fontSize:36,fontWeight:900,color:saldoFinale>=0?"#5CB85C":"#E05252"}}>{fmt(saldoFinale)}</div>
+        <div style={{fontSize:11,color:"#A08060",marginTop:6}}>Saldo iniziale {fmt(saldoIniziale)} + entrate {fmt(totaleEntrate)} - uscite {fmt(totaleUscite)}</div>
+      </div>
+
+      {/* Form movimenti manuali */}
+      <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:12}}>➕ Aggiungi movimento manuale</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:10,alignItems:"flex-end"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Data</label>
+            <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={iStyle}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Tipo</label>
+            <select value={form.type} onChange={e=>setForm(f=>({...f,type:e.target.value}))} style={iStyle}>
+              <option value="prelievo">💰 Prelievo stipendio</option>
+              <option value="entrata">📥 Entrata extra</option>
+              <option value="uscita">📤 Uscita extra</option>
+            </select>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Importo €</label>
+            <input type="number" step="0.01" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} placeholder="0.00" style={iStyle}/>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <label style={{fontSize:11,color:"#A08060"}}>Note</label>
+            <input value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} placeholder="es. Stipendio luglio" style={iStyle}/>
+          </div>
+          <button onClick={addMovement} style={{background:"#D96C05",color:"white",border:"none",borderRadius:8,padding:"9px 16px",fontSize:13,fontWeight:700,cursor:"pointer"}}>Aggiungi</button>
+        </div>
+      </div>
+
+      {/* Lista movimenti manuali */}
+      {monthMovements.length>0&&(
+        <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#D96C05",marginBottom:10}}>📋 Movimenti manuali — {selMonth}</div>
+          {monthMovements.map(m=>(
+            <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:"1px solid #3D2E1E",fontSize:13}}>
+              <span style={{color:"#A08060",fontSize:11}}>{new Date(m.date).toLocaleDateString("it-IT")}</span>
+              <span style={{flex:1}}>{m.type==="prelievo"?"💰 Prelievo":m.type==="entrata"?"📥 Entrata extra":"📤 Uscita extra"}{m.notes?" — "+m.notes:""}</span>
+              <span style={{fontWeight:700,color:m.type==="entrata"?"#5CB85C":"#E05252"}}>{m.type==="entrata"?"+":"-"}{fmt(m.amount)}</span>
+              <button onClick={()=>delMovement(m.id)} style={{background:"none",border:"none",color:"#E05252",cursor:"pointer"}}>🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ANDAMENTO ───────────────────────────────────────────────────────────────
 function Andamento({sales,expenses}){
   const now=new Date();
@@ -1590,11 +1799,9 @@ function Backup({products,sales,expenses,settings,setProducts,setSales,setExpens
 
 // ─── FEDELTÀ ─────────────────────────────────────────────────────────────────
 const REWARDS=[
-  {points:100,label:"Sconto €2",value:2,type:"discount"},
-  {points:200,label:"Sconto €5",value:5,type:"discount"},
-  {points:300,label:"Sconto €10",value:10,type:"discount"},
-  {points:500,label:"Prodotto omaggio fino a €8",value:8,type:"gift"},
-  {points:1000,label:"Sconto €30 o prodotto omaggio premium",value:30,type:"premium"},
+  {points:100,label:"5% di sconto sulla spesa successiva",pct:5,type:"pct"},
+  {points:500,label:"7% di sconto sulla spesa successiva",pct:7,type:"pct"},
+  {points:1000,label:"10% di sconto sulla spesa successiva",pct:10,type:"pct"},
 ];
 const VIP_THRESHOLD=500;
 const INACTIVITY_MONTHS=12;
@@ -1646,6 +1853,14 @@ function ClienteDettaglio({c,onBack,handleRedeem,handleAddPoints,redeemMsg,sales
           <div style={{fontSize:11,color:"#A08060",marginTop:2}}>Ultima att.: {c.lastActivity?new Date(c.lastActivity).toLocaleDateString("it-IT"):"—"}</div>
         </div>
       </div>
+      {c.pendingDiscount&&(
+        <div style={{background:"#1E2E1E",border:"1px solid #2E5E2E",borderRadius:12,padding:14}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#5CB85C",marginBottom:4}}>🎁 Sconto da utilizzare!</div>
+          <div style={{fontSize:13,color:"#F5EDE3"}}>{c.pendingDiscount.label}</div>
+          <div style={{fontSize:11,color:"#A08060",marginTop:4}}>Verrà applicato automaticamente alla prossima vendita in cassa</div>
+          <button onClick={()=>{const u={...c,pendingDiscount:null,history:[...(c.history||[]),{type:"used",date:nowISO(),desc:"Sconto "+c.pendingDiscount.pct+"% utilizzato",points:0}]};setCustomers(prev=>prev.map(x=>x.id===c.id?u:x));setSelCustomer(u);}} style={{marginTop:8,background:"#3D2E1E",color:"#A08060",border:"none",borderRadius:6,padding:"4px 12px",fontSize:11,cursor:"pointer"}}>Segna come usato manualmente</button>
+        </div>
+      )}
       {!inactive&&next&&(
         <div style={{background:"#231A12",border:"1px solid #3D2E1E",borderRadius:12,padding:14}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
@@ -1723,11 +1938,16 @@ function Fedelta({customers,setCustomers,sales}){
   const handleRedeem=(customer,reward)=>{
     const pts=activePoints(customer);
     if(pts<reward.points){showMsg("Punti insufficienti","err");return;}
-    const updated={...customer,points:(customer.points||0)-reward.points,lastActivity:nowISO(),
-      history:[...( customer.history||[]),{type:"redeem",date:nowISO(),desc:"Riscattato: "+reward.label,points:-reward.points}]};
+    // Segna il premio come "da usare alla prossima spesa" e azzera i punti usati
+    const updated={...customer,
+      points:(customer.points||0)-reward.points,
+      lastActivity:nowISO(),
+      pendingDiscount:{pct:reward.pct,label:reward.label,earned:nowISO()},
+      history:[...(customer.history||[]),{type:"redeem",date:nowISO(),desc:"Premio sbloccato: "+reward.label+" ("+reward.pct+"% prossima spesa)",points:-reward.points}]
+    };
     setCustomers(prev=>prev.map(c=>c.id===customer.id?updated:c));
     setSelCustomer(updated);
-    showMsg("✅ Premio riscattato: "+reward.label);
+    showMsg("✅ Premio sbloccato: "+reward.label+" — verrà applicato alla prossima vendita!");
   };
 
   const handleAddPoints=(customer,amount)=>{
@@ -1851,6 +2071,7 @@ function CassaConFedelta({products,setProducts,sales,setSales,customers,setCusto
   const [customerSearch,setCustomerSearch]=useState("");
   const [selectedCustomer,setSelectedCustomer]=useState(null);
   const [showCustomerSearch,setShowCustomerSearch]=useState(false);
+  const [paymentMethod,setPaymentMethod]=useState("bancomat"); // contante | bancomat | altro
   const barcodeRef=useRef(null);
   useEffect(()=>{barcodeRef.current?.focus();},[]);
 
@@ -1886,8 +2107,12 @@ function CassaConFedelta({products,setProducts,sales,setSales,customers,setCusto
   const ivaGroups={};
   cartRows.forEach(r=>{const k=r.iva||22;if(!ivaGroups[k]){ivaGroups[k]={base:0,iva:0};}ivaGroups[k].base+=r.imponibile;ivaGroups[k].iva+=r.iva;});
 
-  // Punti che verranno assegnati
-  const pointsToAssign=selectedCustomer?Math.floor(cartLordo*pointsRate(selectedCustomer)):0;
+  // Sconto fedeltà automatico se cliente ha pendingDiscount
+  const fidelityDiscount=selectedCustomer?.pendingDiscount
+    ?cartLordo*(selectedCustomer.pendingDiscount.pct/100):0;
+  const cartLordoFinal=Math.max(0,cartLordo-fidelityDiscount);
+  // Punti che verranno assegnati (sul totale dopo sconto fedeltà)
+  const pointsToAssign=selectedCustomer?Math.floor(cartLordoFinal*pointsRate(selectedCustomer)):0;
 
   const confirmSale=()=>{
     if(cart.length===0)return;
@@ -1911,13 +2136,20 @@ function CassaConFedelta({products,setProducts,sales,setSales,customers,setCusto
       };
       setCustomers(prev=>prev.map(c=>c.id===selectedCustomer.id?updatedC:c));
     }
+    // Applica sconto fedeltà e aggiorna cliente
+    if(selectedCustomer?.pendingDiscount&&fidelityDiscount>0){
+      const updC={...selectedCustomer,pendingDiscount:null,lastActivity:now,
+        history:[...(selectedCustomer.history||[]),{type:"used",date:now,desc:"Sconto "+selectedCustomer.pendingDiscount.pct+"% utilizzato ("+fmt(fidelityDiscount)+")",points:0}]};
+      setCustomers(prev=>prev.map(c=>c.id===selectedCustomer.id?updC:c));
+    }
     const receipt={id:saleId,date:now,customer:selectedCustomer,pointsAssigned:pointsToAssign,
+      fidelityDiscount,paymentMethod,
       items:cart.map(item=>{const row=cartRows.find(r=>r.id===item.id);return{name:item.name,qty:item.qty,unitPrice:item.sellPrice,iva:item.iva||22,discount:getItemDiscount(item),finalPrice:row.finalPrice};}),
-      totalDiscount:totalDiscountAmt,itemDiscounts:totalItemDiscounts,subtotal:cart.reduce((a,i)=>a+i.qty*i.sellPrice,0),total:cartLordo,imponibile:cartImponibile,iva:cartIva};
+      totalDiscount:totalDiscountAmt,itemDiscounts:totalItemDiscounts,subtotal:cart.reduce((a,i)=>a+i.qty*i.sellPrice,0),total:cartLordoFinal,imponibile:cartImponibile,iva:cartIva};
     setLastSale(receipt);
     setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""});setSelectedCustomer(null);setCustomerSearch("");
     setShowReceipt(true);
-    showMsg("✅ Vendita registrata! Totale: "+fmt(cartLordo)+(pointsToAssign>0?" · +"+pointsToAssign+" punti a "+selectedCustomer.firstName:""),"ok");
+    showMsg("✅ Vendita registrata! Totale: "+fmt(cartLordoFinal)+(fidelityDiscount>0?" · Sconto fedeltà: -"+fmt(fidelityDiscount):"")+(pointsToAssign>0?" · +"+pointsToAssign+" pt":""),"ok");
   };
 
   const filteredCustomers=customers.filter(c=>(c.firstName+" "+c.lastName).toLowerCase().includes(customerSearch.toLowerCase())||c.phone?.includes(customerSearch)).slice(0,6);
@@ -2046,7 +2278,7 @@ function CassaConFedelta({products,setProducts,sales,setSales,customers,setCusto
               <span>Totale</span><span style={{color:"#D96C05"}}>{fmt(cartLordo)}</span>
             </div>
             <button onClick={confirmSale} style={{width:"100%",background:"#D96C05",color:"white",border:"none",borderRadius:10,padding:"12px",fontSize:15,fontWeight:700,cursor:"pointer",marginTop:4}}>✅ Conferma Vendita</button>
-            <button onClick={()=>{setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""});setSelectedCustomer(null);}} style={{width:"100%",marginTop:8,background:"transparent",color:"#A08060",border:"1px solid #3D2E1E",borderRadius:10,padding:"8px",fontSize:13,cursor:"pointer"}}>Svuota carrello</button>
+            <button onClick={()=>{setCart([]);setItemDiscounts({});setTotalDiscount({type:"%",value:""});setSelectedCustomer(null);setPaymentMethod("bancomat");}} style={{width:"100%",marginTop:8,background:"transparent",color:"#A08060",border:"1px solid #3D2E1E",borderRadius:10,padding:"8px",fontSize:13,cursor:"pointer"}}>Svuota carrello</button>
           </>
         )}
       </div>
@@ -2066,7 +2298,9 @@ function CassaConFedelta({products,setProducts,sales,setSales,customers,setCusto
             </div>
             <div style={{borderTop:"1px dashed #3D2E1E",paddingTop:10}}>
               {lastSale.totalDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#E05252",marginBottom:4}}><span>Sconto</span><span>-{fmt(lastSale.totalDiscount)}</span></div>}
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:17,fontWeight:800,marginBottom:8}}><span>TOTALE</span><span style={{color:"#D96C05"}}>{fmt(lastSale.total)}</span></div>
+              {lastSale.fidelityDiscount>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#5CB85C",marginBottom:4}}><span>🎁 Sconto fedeltà</span><span>-{fmt(lastSale.fidelityDiscount)}</span></div>}
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:17,fontWeight:800,marginBottom:4}}><span>TOTALE</span><span style={{color:"#D96C05"}}>{fmt(lastSale.total)}</span></div>
+              <div style={{fontSize:11,color:"#A08060",marginBottom:8,textAlign:"right"}}>{lastSale.paymentMethod==="bancomat"?"💳 Bancomat":lastSale.paymentMethod==="contante"?"💵 Contante":"📱 Altro"}</div>
               {lastSale.pointsAssigned>0&&(
                 <div style={{background:"#1E2E1E",borderRadius:8,padding:"8px 12px",textAlign:"center"}}>
                   <div style={{fontSize:13,color:"#5CB85C",fontWeight:700}}>🎯 +{lastSale.pointsAssigned} punti assegnati a {lastSale.customer.firstName}!</div>
@@ -2095,9 +2329,11 @@ function App(){
   const [customers,setCustomers]=useState(()=>load("apc_customers")||[]);
   const [suppliers,setSuppliers]=useState(()=>load("apc_suppliers")||SUPPLIERS_DEFAULT);
   const [purchaseOrders,setPurchaseOrders]=useState(()=>load(KEYS.orders)||[]);
+  const [finance,setFinance]=useState(()=>load("apc_finance")||{initialBalance:{},movements:[]});
   useEffect(()=>save(KEYS.products,products),[products]);
   useEffect(()=>save("apc_suppliers",suppliers),[suppliers]);
   useEffect(()=>save(KEYS.orders,purchaseOrders),[purchaseOrders]);
+  useEffect(()=>save("apc_finance",finance),[finance]);
   useEffect(()=>save(KEYS.sales,sales),[sales]);
   useEffect(()=>save(KEYS.expenses,expenses),[expenses]);
   useEffect(()=>save(KEYS.settings,settings),[settings]);
@@ -2120,6 +2356,7 @@ function App(){
     {id:"ordini",label:"Proposta Ordini",icon:"📋"},
     {id:"fornitori",label:"Fornitori",icon:"🏭"},
     {id:"acquisti",label:"Ordini pagati",icon:"🧾"},
+    {id:"finanze",label:"Finanze",icon:"🏦"},
     {id:"andamento",label:"Andamento",icon:"📈"},
     {id:"report",label:"Report",icon:"📊"},
     {id:"fedelta",label:"Fedeltà",icon:"⭐"},
@@ -2145,6 +2382,7 @@ function App(){
         {tab==="ordini"&&<Ordini products={products} getSalesByProduct={getSalesByProduct} settings={settings} setSettings={setSettings} suppliers={suppliers} setSuppliers={setSuppliers}/>}
         {tab==="fornitori"&&<Fornitori suppliers={suppliers} setSuppliers={setSuppliers} products={products} setProducts={setProducts}/>}
         {tab==="acquisti"&&<OrdiniEffettuati purchaseOrders={purchaseOrders} setPurchaseOrders={setPurchaseOrders} suppliers={suppliers}/>}
+        {tab==="finanze"&&<ControlloFinanziario sales={sales} expenses={expenses} purchaseOrders={purchaseOrders} finance={finance} setFinance={setFinance}/>}
         {tab==="andamento"&&<Andamento sales={sales} expenses={expenses}/>}
         {tab==="report"&&<Report products={products} sales={sales} expenses={expenses} getSalesByProduct={getSalesByProduct} purchaseOrders={purchaseOrders}/>}
         {tab==="fedelta"&&<Fedelta customers={customers} setCustomers={setCustomers} sales={sales}/>}
